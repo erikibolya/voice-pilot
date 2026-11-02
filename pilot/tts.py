@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import queue
+import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +16,35 @@ import sounddevice as sd
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "cache" / "tts"
+
+
+def split_sentences(text: str, limit: int = 180) -> list[str]:
+    """Rozdělí text na kousky, které jde vyrábět po částech.
+
+    Krátká odpověď zůstane jedním kusem. Dlouhá se dělí po větách; když je
+    i věta moc dlouhá, řeže se u čárky nebo mezery.
+    """
+    text = " ".join((text or "").split())
+    if not text:
+        return []
+
+    parts = re.split(r"(?<=[.!?…])\s+", text)
+    out: list[str] = []
+
+    for part in parts:
+        part = part.strip()
+        while len(part) > limit:
+            cut = part.rfind(",", 0, limit)
+            if cut < limit // 3:
+                cut = part.rfind(" ", 0, limit)
+            if cut <= 0:
+                cut = limit
+            out.append(part[: cut + 1].strip())
+            part = part[cut + 1 :].strip()
+        if part:
+            out.append(part)
+
+    return out or [text]
 
 
 class TTSError(RuntimeError):
@@ -32,37 +64,77 @@ class Speaker:
     # ---------- veřejné ----------
 
     def say(self, text: str) -> None:
+        """Přečte text. U delších odpovědí mluví dřív, než je celá hotová.
+
+        Generování hlasu trvá u delší věty přes dvě sekundy a dřív se čekalo
+        na celý soubor. Teď se text rozdělí na věty, první se vyrobí hned a
+        zbytek se připravuje, zatímco už mluvíme.
+        """
         text = (text or "").strip()
         if not text:
             return
 
+        sentences = split_sentences(text)
+        errors: list[str] = []
+
+        if len(sentences) <= 1:
+            path, error = self._render(text, 0)
+            if path is None:
+                raise TTSError(error)
+            self._play(path)
+            return
+
+        prepared: queue.Queue = queue.Queue()
+
+        def produce() -> None:
+            for index, sentence in enumerate(sentences):
+                prepared.put(self._render(sentence, index))
+            prepared.put(None)
+
+        threading.Thread(target=produce, daemon=True).start()
+
+        while True:
+            item = prepared.get()
+            if item is None:
+                break
+            path, error = item
+            if path is None:
+                errors.append(error)
+                continue
+            self._play(path)
+
+        if errors and len(errors) == len(sentences):
+            raise TTSError("hlas nefungoval → " + "; ".join(errors))
+
+    # ---------- výroba jednoho souboru ----------
+
+    def _render(self, text: str, index: int) -> tuple[Path | None, str]:
         order = ["edge", "piper"] if self.cfg.tts_engine == "auto" else [self.cfg.tts_engine]
         errors: list[str] = []
 
         for engine in order:
             try:
                 if engine == "edge":
-                    path = self._edge(text)
+                    path = self._edge(text, index)
                 elif engine == "piper":
                     path = self._piper(text)
                 else:
                     raise TTSError(f"neznámý engine {engine!r}")
                 self._engine_used = engine
-                self._play(path)
-                return
+                return path, ""
             except Exception as exc:
                 errors.append(f"{engine}: {exc}")
                 if self.cfg.tts_engine != "auto":
-                    raise
+                    break
 
-        raise TTSError("hlas nefungoval → " + "; ".join(errors))
+        return None, "; ".join(errors)
 
     # ---------- edge-tts ----------
 
-    def _edge(self, text: str) -> Path:
+    def _edge(self, text: str, index: int = 0) -> Path:
         import edge_tts
 
-        out = CACHE / "speech.mp3"
+        out = CACHE / f"speech-{index}.mp3"
         communicate = edge_tts.Communicate(text, self.cfg.voice, rate=self.cfg.speech_rate)
         asyncio.run(communicate.save(str(out)))
         if not out.exists() or out.stat().st_size < 1000:

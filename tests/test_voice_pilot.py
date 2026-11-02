@@ -199,6 +199,71 @@ def test_normalize_nedela_nic_s_tisem():
     assert float(np.abs(normalize(ticho)).max()) == 0.0
 
 
+# --------------------------------------------------------------------- hlas
+
+
+def test_rozdeleni_na_vety():
+    from pilot.tts import split_sentences
+
+    vety = split_sentences("První věta. Druhá věta! Třetí?")
+    assert vety == ["První věta.", "Druhá věta!", "Třetí?"]
+
+
+def test_kratka_odpoved_zustane_celá():
+    from pilot.tts import split_sentences
+
+    assert len(split_sentences("Ano.")) == 1
+    assert split_sentences("") == []
+
+
+def test_dlouha_veta_se_rozdeli_u_carky():
+    from pilot.tts import split_sentences
+
+    dlouha = ("Vidím složku Faktury, ve které je dvanáct PDF souborů, "
+              "poslední je z prvního listopadu, a ještě tři podložky.")
+    casti = split_sentences(dlouha, limit=60)
+
+    assert len(casti) > 1
+    assert all(len(c) <= 61 for c in casti), [len(c) for c in casti]
+    assert "".join(c.replace(" ", "") for c in casti) == dlouha.replace(" ", "")
+
+
+def test_casti_neztrati_slova():
+    from pilot.tts import split_sentences
+
+    text = "Jedna. Dva, tři! Čtyři?"
+    assert " ".join(split_sentences(text)).replace(",", "") == text.replace(",", "")
+
+
+def test_hlas_zacne_mluvit_driv_nez_je_cely_hotovy(cfg, monkeypatch):
+    """Regrese: dřív se čekalo na vyrobení celé odpovědi, než zazněl první zvuk."""
+    import time
+
+    from pilot.tts import Speaker
+
+    reci = Speaker(cfg)
+    udalosti: list[tuple[str, int]] = []
+
+    def predstirana_vyroba(text: str, index: int):
+        time.sleep(0.12)
+        udalosti.append(("vyroba", index))
+        return Path("predstirany.mp3"), ""
+
+    def predstirane_prehrani(path) -> None:  # noqa: ANN001
+        udalosti.append(("prehrani", -1))
+
+    monkeypatch.setattr(reci, "_render", predstirana_vyroba)
+    monkeypatch.setattr(reci, "_play", predstirane_prehrani)
+
+    reci.say("První věta. Druhá věta. Třetí věta. Čtvrtá věta.")
+
+    prvni_prehrani = next(i for i, e in enumerate(udalosti) if e[0] == "prehrani")
+    posledni_vyroba = max(i for i, e in enumerate(udalosti) if e[0] == "vyroba")
+
+    assert prvni_prehrani < posledni_vyroba, udalosti
+    assert udalosti[-1][0] == "prehrani", "na konci musí zaznít i poslední část"
+
+
 # ------------------------------------------------------------------ mozek
 
 
