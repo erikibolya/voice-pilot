@@ -265,6 +265,25 @@ class Speaker:
             except Exception:
                 pass
 
+    def prewarm(self) -> None:
+        """Načte model Piperu na pozadí, aby první odpověď nečekala 3,7 s."""
+        if self.cfg.tts_engine not in ("piper", "auto"):
+            return
+
+        def nacti() -> None:
+            try:
+                model = Path(self.cfg.piper_model) if self.cfg.piper_model else _default_piper()
+                if not model.exists():
+                    return
+                root = espeak_data_root()
+                if root is not None:
+                    os.environ["ESPEAK_DATA_PATH"] = str(root)
+                _piper_voice(model)
+            except Exception:
+                pass
+
+        threading.Thread(target=nacti, daemon=True).start()
+
     # ---------- výroba jednoho souboru ----------
 
     def _render(self, text: str, index: int) -> tuple[Path | None, str]:
@@ -397,9 +416,10 @@ def setup_piper() -> None:
         urllib.request.urlretrieve(base + filename, dest)
 
     print("  instaluji piper-tts ...")
+    import sys
+
     subprocess.run(
-        [str(Path(__file__).resolve().parent.parent / ".venv" / "Scripts" / "python.exe"),
-         "-m", "pip", "install", "-q", "piper-tts"],
+        [sys.executable, "-m", "pip", "install", "-q", "piper-tts"],
         check=False,
     )
     print("  hotovo.")
