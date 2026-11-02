@@ -25,6 +25,14 @@ Rychlé (bez modelu a sítě): `.venv\Scripts\python.exe -m pytest -q -m "not sl
 | Srovnání hlasitosti z tichého mikrofonu | `test_normalize_srovna_tichy_mikrofon` | jednotka |
 | Srovnání hlasitosti nerozbije ticho | `test_normalize_nedela_nic_s_tisem` | jednotka |
 | Model odpoví česky | `test_model_odpovi_cesky` | OpenCode API |
+| Celé kolo: otázka → odpověď → hlas | `test_cely_kolo_od_otazky_k_odpovedi` | `Engine` se skutečným modelem |
+| Kolo se po dokončení uklidí | `test_kolo_se_uklidí_po_dokonceni` | stav `idle`, `is_busy` |
+| Porovnání verzí | `test_porovnani_verzi` | 7 případů, včetně `v0.10.0 > 0.9.0` |
+| Parsování verze | `test_verze_se_parsuji_spravne` | `v`, `-dev`, nesmysl |
+| Kontrola aktualizací nespadne bez sítě | `test_kontrola_aktualizaci_nezhavari_bez_site` | simulovaná chyba sítě |
+| Okno se postaví a reaguje na události | `test_okno_se_postavi_a_umi_stav` | stav, přepis, historie, odpověď |
+| Přepnutí tématu | `test_okno_prepne_tema` | tmavé/světlé tokeny |
+| **Každý UI modul jde importovat** | `test_modul_jde_importovat` | regrese: syntax error v `tray.py` prošel testy |
 | Kontrola mozku při startu | `test_preflight_najde_bezici_opencode` | `/api/info` |
 | Srozumitelná hláška, když služba neběží | `test_preflight_hlasi_kdyz_sluzba_nebezi` | distribuce |
 | Srozumitelná hláška, když chybí přihlášení | `test_preflight_hlasi_chybejici_prihlaseni` | distribuce |

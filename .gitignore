@@ -3,6 +3,11 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# build
+dist/
+installer/.build/
+installer/icon.ico
+
 # runtime
 config.json
 cache/

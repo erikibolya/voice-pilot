@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  testy:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Závislosti
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install faster-whisper edge-tts miniaudio mss numpy pillow pynput sounddevice uiautomation httpx PySide6-Essentials pytest
+
+      - name: Testy bez GPU, mikrofonu a OpenCode
+        run: python -m pytest -q -m "not slow and not desktop"

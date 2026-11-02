@@ -1,43 +1,75 @@
-"""Smyčka: držíš klávesu / mluvíš / on odpovídá."""
+"""Terminálový režim: držíš F9, mluvíš, on odpovídá."""
 
 from __future__ import annotations
 
-import queue
 import sys
-import threading
 import time
 
-import sounddevice as sd
 from pynput import keyboard
 
-from . import eyes
-from .brain import Brain
-from .oc import OpenCodeError
+from .engine import Engine
 from .stt import Mic, Transcriber
-from .tts import Speaker, TTSError
+from .tts import TTSError
 
 BANNER = r"""
   voice-pilot  ·  kouká a mluví (milník 1)
   ---------------------------------------
 """
 
+STATE_TEXT = {
+    "listening": "● poslouchám…",
+    "thinking": "… přemýšlím",
+    "speaking": "♪ mluvím",
+}
+
 
 class Pilot:
+    """Tenká slupka nad `Engine` pro terminál. Okno používá Engine přímo."""
+
     def __init__(self, cfg):
         self.cfg = cfg
-        self.transcriber = Transcriber(cfg)
-        self.speaker = Speaker(cfg)
-        self.brain = Brain(cfg)
-        self.mic = Mic(cfg.sample_rate)
-        self.events: queue.Queue[str] = queue.Queue()
-        self._last_toggle = 0.0
+        self.engine = Engine(cfg, on_event=self._on_event)
+        self.mic = self.engine.mic
+        self.transcriber = self.engine.transcriber
+        self.speaker = self.engine.speaker
+        self.brain = self.engine.brain
+        self.last_answer = ""
 
-    # ---------- běh ----------
+    # --------------------------------------------------- události
+
+    def _on_event(self, payload: dict) -> None:
+        kind = payload["type"]
+
+        if kind == "state":
+            state = payload["value"]
+            if state in STATE_TEXT:
+                print(f"  {STATE_TEXT[state]}          ", end="\r", flush=True)
+
+        elif kind == "heard":
+            text = payload.get("text", "")
+            seconds = payload.get("seconds")
+            if text:
+                suffix = f" ({seconds} s)" if seconds else ""
+                print(f'  ty{suffix}: "{text}"')
+            else:
+                print("  (nic jsem neslyšel)\n")
+
+        elif kind == "screen":
+            print(f'  (vidím {payload["elements"]} prvků v okně "{payload["window"]}")')
+
+        elif kind == "answer":
+            self.last_answer = payload["text"]
+            print(f'  pilot: "{payload["text"]}"')
+
+        elif kind == "log":
+            print(f"  {payload['text']}")
+
+    # ------------------------------------------------------ běh
 
     def run(self) -> None:
         print(BANNER)
 
-        ok, detail = self.brain.client.preflight()
+        ok, detail = self.engine.preflight()
         if not ok:
             print("  !! " + detail.replace("\n", "\n  ") + "\n")
             self._say("Nemůžu se spojit s OpenCode. Bez něj neumím myslet.")
@@ -46,75 +78,27 @@ class Pilot:
 
         self._say("Pilot je připravený. F9 začne nahrávat, druhá F9 nahrávku ukončí.")
 
-        hotkey = self.cfg.hotkey if self.cfg.hotkey.startswith("<") else f"<{self.cfg.hotkey}>"
-        print(f"  klávesa: {self.cfg.hotkey}   ukončení: Ctrl+C\n")
+        hotkey = self.cfg.hotkey
+        combo = hotkey if hotkey.startswith("<") else f"<{hotkey}>"
+        print(f"  klávesa: {hotkey}   ukončení: Ctrl+C\n")
 
-        listener = keyboard.GlobalHotKeys({hotkey: self._on_hotkey})
+        listener = keyboard.GlobalHotKeys({combo: self.engine.toggle})
         listener.start()
 
         try:
             while True:
-                try:
-                    self.events.get(timeout=0.5)
-                except queue.Empty:
-                    continue
-                if self.mic.is_recording:
-                    self._finish_recording()
-                else:
-                    self._begin_recording()
+                time.sleep(0.3)
         except KeyboardInterrupt:
             pass
         finally:
-            if self.mic.is_recording:
-                self.mic.stop()
             listener.stop()
+            self.engine.shutdown()
             print("\n  takhle někdy příště.")
 
-    def _on_hotkey(self) -> None:
-        now = time.monotonic()
-        if now - self._last_toggle < 0.35:
-            return
-        self._last_toggle = now
-        self.events.put("toggle")
-
-    def _begin_recording(self) -> None:
-        sd.stop()
-        _beep(880)
-        self.mic.start()
-        print("  ● poslouchám…  (znovu F9 ukončí nahrávku)", end="\r", flush=True)
-
-    def _finish_recording(self) -> None:
-        audio = self.mic.stop()
-        _beep(620)
-        seconds = audio.size / self.cfg.sample_rate
-        print(f"  ● nahráno {seconds:.1f} s, přepisuju…        ")
-
-        text = self.transcriber.transcribe(audio)
-        if not text:
-            print("  (nic jsem neslyšel)\n")
-            return
-
-        print(f'  ty: "{text}"')
-        self.handle(text)
-
-    # ---------- jedna otázka ----------
-
     def handle(self, text: str) -> None:
-        try:
-            snap = eyes.snapshot(self.cfg)
-            print(f'  (vidím {len(snap.elements)} prvků v okně "{snap.active_title}")')
-
-            reply = self.brain.look_and_answer(text, snap)
-        except OpenCodeError as exc:
-            print(f"  chyba modelu: {exc}\n")
-            self._say("Mozek mi neodpovídá. Zkontroluj, jestli běží OpenCode.")
-            return
-        except Exception as exc:
-            print(f"  chyba: {exc}\n")
-            return
-
-        print(f'  pilot: "{reply.say}"\n')
-        self._say(reply.say)
+        """Jeden dotaz, počká na odpověď. Používá se v testech a v textovém režimu."""
+        self.last_answer = ""
+        self.engine.ask(text, background=False)
 
     def _say(self, text: str) -> None:
         try:
@@ -147,16 +131,6 @@ def listen_once(cfg) -> None:
     audio = mic.stop()
     print(f"  nahráno {audio.size / cfg.sample_rate:.1f} s, přepisuju…")
     print(f'  přepis: "{Transcriber(cfg).transcribe(audio)}"')
-
-
-def _beep(frequency: int = 800, duration_ms: int = 70) -> None:
-    """Krátká zvuková odezva — ať je poznat, kdy nahrávání začalo a skončilo."""
-    try:
-        import winsound
-
-        winsound.Beep(frequency, duration_ms)
-    except Exception:
-        pass
 
 
 def _configure_console() -> None:
