@@ -35,12 +35,12 @@ nemůže kliknout na něco, co mu neukážeme.
 Stáhni `voice-pilot-<verze>-setup.exe` z [Releases](../../releases) a spusť ho.
 Nepotřebuje správce, instaluje se do `%LOCALAPPDATA%\VoicePilot`.
 
-Instalátor po zkopírování souborů spustí přípravu prostředí: vytvoří virtuální
-Python prostředí a nainstaluje závislosti. Trvá to asi minutu a půl a potřebuje
-internet. Průběh se loguje do `install.log` v instalační složce.
+Instalátor **přibaluje vlastní Python i všechny balíčky**, takže nepotřebuje
+Python v systému ani internet. Instalace trvá asi minutu a loguje se do
+`install.log`.
 
-**Vyžaduje Python 3.10+** nainstalovaný v systému ([python.org](https://www.python.org/downloads/windows/),
-zaškrtni „Add python.exe to PATH“).
+CUDA knihovny pro GPU (1,3 GB) se stahují až během instalace a jen když
+najde NVIDIA kartu. Bez nich aplikace funguje, jen je přepis ~6× pomalejší.
 
 ### Ze zdrojů
 
@@ -76,6 +76,27 @@ Aplikace běží v okně i v systémové liště.
 | **Ukončit v liště** | skutečné ukončení |
 
 Pípnutí označuje začátek a konec nahrávání, takže se nemusíš dívat do okna.
+
+## Klikání s potvrzením
+
+Model **nesmí** říct „klikni na souřadnice 812, 431“. Smí jen odkázat na
+číslo prvku, který jsme mu ukázali ve snímku obrazovky. Co v seznamu není,
+se nikdy neprovede.
+
+Každá akce se nejdřív nahlas ohlásí a čeká na potvrzení:
+
+| | |
+|---|---|
+| **Ctrl+Alt+Enter** | provést |
+| **Ctrl+Alt+Esc** | zrušit |
+| panel | vpravo dole, **nebere fokus** — psaní zůstane v aplikaci, kterou ovládáš |
+
+Nevratné akce (smazat, odeslat, zaplatit, odinstalovat) dostanou varování
+navíc a jiné tlačítko. Když do 45 sekund nikdo neodpoví, platí „ne“.
+
+Když prvek neumí UI Automation kliknout a musí se klikat na souřadnice,
+ověří se nejdřív, že je pořád na stejném místě. Když se posunul, nic se
+nestane.
 
 ## Odezva
 
@@ -161,19 +182,24 @@ Výsledek je `dist\voice-pilot-<verze>-setup.exe`. Potřebuje
 - **Prohlížeče** vydají jen dokument a hlavní odkazy, ne celý obsah stránky.
   Chrome má strom přístupnosti líný; plnohodnotné čtení přijde přes DevTools
   Protocol v dalším kroku.
-- **Offline hlas** (Piper) není nainstalovaný, dokud nespustíš `--setup-piper`.
-  Bez něj je potřeba internet.
-- **Python musí být v systému.** Instalátor ho nebalí; potřebuje 3.10+ na PATH.
-- Výchozí `deepseek-flash` je rychlý, ale občas si vymyslí detail.
+- **Offline hlas** (Piper) není součástí instalace, doinstaluje se přes
+  `--setup-piper` (63 MB). Bez něj je potřeba internet.
+- **CUDA knihovny** se stahují až při instalaci. Bez internetu pojede přepis
+  na CPU (~6× pomaleji).
+- Výchozí `deepseek-flash` je rychlý, ale občas si vymyslí detail. Model
+  může navrhnout i akci, kterou jsi nechtěl — proto to potvrzování.
 
 ## Co dál
 
-**Milník 2 — klikání s potvrzením.** Model dostane seznam prvků s čísly
-a vrací strukturované akce (`klikni [7]`, `napiš "text"`). Tři pravidla:
+**Hotové:** koukání, mluvení, klikání s potvrzením.
 
-1. Klikat jde **jen na prvky, které jsme ukázali** — ne na souřadnice.
-2. Každý klik se **ohlásí nahlas** a čeká na potvrzení (Enter = ano, Esc = ne).
-3. Nevratné akce (smazat, odeslat, zaplatit) mají varování navíc.
+**Zbývá:**
+
+- **Prohlížeče.** Chrome vydá jen dokument a hlavní odkazy, ne celý obsah
+  stránky. Plnohodnotné čtení přijde přes DevTools Protocol.
+- **Streamování odpovědi modelu** — mluvit už u první věty by ušetřilo
+  další ~1,2 s.
+- **Piper v instalátoru** — teď se doinstaluje ručně přes `--setup-piper`.
 
 ## Bezpečnost
 

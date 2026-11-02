@@ -1,35 +1,44 @@
-"""Mozek: poskládá prompt z toho, co vidíme, a pošle ho OpenCode."""
+"""Mozek: z toho, co vidíme, udělá odpověď a případně plán akcí."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from . import eyes
+from . import actions, eyes
+from .actions import Plan
 from .oc import OpenCode
 
 SYSTEM = """\
-Jsi Pilot, hlasový asistent běžící na českém Windows. Uživatel na tebe mluví a ty mu odpovídáš nahlas.
+Jsi Pilot, hlasový asistent běžící na českém Windows. Uživatel na tebe mluví a ty mu odpovídáš nahlas. Umíš se podívat na obrazovku a ovládat myš a klávesnici.
 
-Jak mluvit:
-- Česky, přirozeně, jako schopný kolega sedící vedle.
-- Maximálně 2 krátké věty. Žádné odrážky, žádný markdown, žádné emoji, žádné závorky s poznámkami.
-- Čísla piš slovy, když jde o krátký údaj (řekni "dvanáct", ne "12"), ale u názvů souborů a cest nech přesný tvar.
-- Když si nejsi jistý, řekni to. Nevymýšlej si, co na obrazovce není.
+Odpovídej VŽDY jen jedním JSON objektem, bez markdownu a bez textu okolo:
+{"say": "co řekneš nahlas", "actions": []}
 
-Co umíš právě teď:
-- Podívat se na obrazovku a popsat, co tam je.
-- Přečíst názvy oken, tlačítek a textů v aktivním okně.
+"say" jsou jedna až dvě krátké věty česky, bez odrážek a emoji.
+"actions" je seznam toho, co se má provést. Když se uživatel jen ptá a není co dělat, nech prázdný seznam.
 
-Co zatím NEumíš:
-- Klikat, psát a ovládat myš. To přijde později.
-- Když tě o to uživatel požádá, řekni to jednou krátkou větou a navrhni, na který prvek bys klikl.
+Povolené akce — "target" je VŽDY číslo prvku ze seznamu PRVKY:
+  {"type": "click",        "target": 7}
+  {"type": "double_click", "target": 7}
+  {"type": "right_click",  "target": 7}
+  {"type": "invoke",       "target": 7}          // tlačítko; spolehlivější než click
+  {"type": "focus",        "target": 7}
+  {"type": "type",         "target": 7, "text": "co napsat"}
+  {"type": "key",          "keys": "ctrl+s"}
+  {"type": "scroll",       "direction": "down", "amount": 3}
+
+Pravidla, která se nesmí porušit:
+- Používej pouze čísla z posledního seznamu PRVKY. Jiné prvky neexistují.
+- Když uživatel chce něco, co v seznamu není, řekni to v "say" a žádnou akci nedělej.
+- Maximálně 8 akcí. Méně a jistě je lepší než hodně a naslepo.
+- Nevymýšlej si názvy souborů, texty ani obsah, který jsi v seznamu neviděl.
 """
 
 
 @dataclass
 class Reply:
     say: str
-    actions: list[dict] = field(default_factory=list)
+    plan: Plan = field(default_factory=Plan)
 
 
 class Brain:
@@ -43,13 +52,14 @@ class Brain:
     def look_and_answer(self, utterance: str, snap: eyes.Snapshot | None = None) -> Reply:
         snap = snap or eyes.snapshot(self.cfg)
         prompt = self._build_prompt(utterance, snap)
-        answer = self.client.generate(prompt)
 
-        self.history.append((utterance, answer))
+        raw = self.client.generate(prompt)
+        plan = actions.parse(raw)
+
+        self.history.append((utterance, plan.say))
         self.history = self.history[-6:]
 
-        # Zatím jen řeč. Struktura je připravená na akce (milník 2).
-        return Reply(say=answer)
+        return Reply(say=plan.say, plan=plan)
 
     def describe_screen(self) -> Reply:
         return self.look_and_answer("Co teď vidíš na obrazovce? Popiš to jednou větou.")
@@ -67,8 +77,8 @@ class Brain:
                 parts.append(f"Ty: {answered}")
 
         parts.append("")
-        parts.append(f'--- NOVÝ VSTUP ---')
+        parts.append("--- NOVÝ VSTUP ---")
         parts.append(f'Uživatel řekl: "{utterance}"')
         parts.append("")
-        parts.append("Odpověz jednou nebo dvěma krátkými věty, česky, bez formátování.")
+        parts.append('Odpověz JSON objektem {"say": ..., "actions": [...]}.')
         return "\n".join(parts)

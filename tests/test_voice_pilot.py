@@ -519,3 +519,139 @@ def test_pilot_si_pamatuje_predchozi_vetu(cfg):
 
     assert "Jmenuju se Pilot." in prompt
     assert "a co děláš?" in prompt
+
+
+# ---------------------------------------------------------------- milník 2
+
+
+def _snap_pro_akce():
+    from pilot.eyes import Element, Snapshot
+
+    return Snapshot(
+        active_title="Faktury – Průzkumník souborů",
+        active_class="CabinetWClass",
+        elements=[
+            Element(index=1, kind="tlačítko", name="Přejmenovat", x=10, y=10, w=40, h=20),
+            Element(index=2, kind="tlačítko", name="Smazat", x=60, y=10, w=40, h=20),
+        ],
+    )
+
+
+def _reply_s_akci(target: int = 1):
+    from pilot.actions import Action, Plan
+    from pilot.brain import Reply
+
+    plan = Plan(say="Jdu na to.", actions=[Action(type="click", target=target)])
+    return Reply(say="Jdu na to.", plan=plan)
+
+
+def _engine_pro_akce(cfg, monkeypatch, potvrzeno: bool):
+    from pilot import actions as act
+
+    provedeno: list = []
+    monkeypatch.setattr(act, "execute", lambda a, s: provedeno.append(a) or "kliknuto")
+    monkeypatch.setattr("pilot.engine.eyes.snapshot", lambda c: _snap_pro_akce())
+
+    from pilot.engine import Engine
+
+    engine = Engine(cfg, on_event=lambda e: None)
+    monkeypatch.setattr(engine.speaker, "say", lambda t: None)
+    monkeypatch.setattr(
+        engine.brain, "look_and_answer", lambda text, snap: _reply_s_akci()
+    )
+    engine.confirmer = lambda popis, nebezpecna: potvrzeno
+    return engine, provedeno
+
+
+def test_akce_se_bez_potvrzeni_neprovedou(cfg, monkeypatch):
+    engine, provedeno = _engine_pro_akce(cfg, monkeypatch, potvrzeno=False)
+
+    engine.ask("klikni na přejmenovat", background=False)
+
+    assert provedeno == []
+    assert engine.state == "idle"
+
+
+def test_akce_se_po_potvrzeni_provedou(cfg, monkeypatch):
+    engine, provedeno = _engine_pro_akce(cfg, monkeypatch, potvrzeno=True)
+
+    engine.ask("klikni na přejmenovat", background=False)
+
+    assert len(provedeno) == 1
+    assert provedeno[0].target == 1
+    assert engine.state == "idle"
+
+
+def test_potvrzeni_dostane_citelný_popis(cfg, monkeypatch):
+    from pilot import actions as act
+
+    monkeypatch.setattr(act, "execute", lambda a, s: "ok")
+    monkeypatch.setattr("pilot.engine.eyes.snapshot", lambda c: _snap_pro_akce())
+
+    from pilot.engine import Engine
+
+    engine = Engine(cfg, on_event=lambda e: None)
+    monkeypatch.setattr(engine.speaker, "say", lambda t: None)
+    monkeypatch.setattr(engine.brain, "look_and_answer", lambda t, s: _reply_s_akci())
+
+    otazky: list[tuple[str, bool]] = []
+    engine.confirmer = lambda popis, nebezpecna: otazky.append((popis, nebezpecna)) or False
+
+    engine.ask("klikni", background=False)
+
+    assert otazky, "potvrzení se vůbec nezeptalo"
+    popis, nebezpecna = otazky[0]
+    assert "Přejmenovat" in popis
+    assert nebezpecna is False
+
+
+def test_nebezpecna_akce_se_oznaci(cfg, monkeypatch):
+    from pilot import actions as act
+
+    monkeypatch.setattr(act, "execute", lambda a, s: "ok")
+    monkeypatch.setattr("pilot.engine.eyes.snapshot", lambda c: _snap_pro_akce())
+
+    from pilot.actions import Action, Plan
+    from pilot.brain import Reply
+    from pilot.engine import Engine
+
+    engine = Engine(cfg, on_event=lambda e: None)
+    monkeypatch.setattr(engine.speaker, "say", lambda t: None)
+    monkeypatch.setattr(
+        engine.brain,
+        "look_and_answer",
+        lambda t, s: Reply(
+            say="Smažu to.",
+            plan=Plan(say="Smažu to.", actions=[Action(type="click", target=2)]),
+        ),
+    )
+
+    otazky = []
+    engine.confirmer = lambda popis, nebezpecna: otazky.append(nebezpecna) or False
+
+    engine.ask("smaž to", background=False)
+
+    assert otazky == [True], "smazání musí být označené jako nevratné"
+
+
+def test_chybny_plan_se_neprovede(cfg, monkeypatch):
+    from pilot.actions import Plan
+    from pilot.brain import Reply
+    from pilot.engine import Engine
+
+    monkeypatch.setattr("pilot.engine.eyes.snapshot", lambda c: _snap_pro_akce())
+
+    engine = Engine(cfg, on_event=lambda e: None)
+    monkeypatch.setattr(engine.speaker, "say", lambda t: None)
+    monkeypatch.setattr(
+        engine.brain,
+        "look_and_answer",
+        lambda t, s: Reply(say="Nerozumím.", plan=Plan(say="Nerozumím.", error="neznámý typ")),
+    )
+
+    provedeno = []
+    engine.confirmer = lambda p, d: provedeno.append(True) or True
+
+    engine.ask("něco", background=False)
+
+    assert provedeno == [], "u chybného plánu se nesmí ani ptát"

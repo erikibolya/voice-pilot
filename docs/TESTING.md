@@ -33,6 +33,28 @@ Rychlé (bez modelu a sítě): `.venv\Scripts\python.exe -m pytest -q -m "not sl
 | Rozpoznání diakritiky v cestě | `test_je_ascii_rozpozna_diakritiku` | jednotka |
 | **Data pro výslovnost leží na ASCII cestě** | `test_espeak_data_lezi_na_ceste_bez_diakritiky` | regrese: `espeak-ng` je C knihovna |
 | Model odpoví česky | `test_model_odpovi_cesky` | OpenCode API |
+
+## Milník 2 — akce
+
+| Funkce | Test | Poznámka |
+|---|---|---|
+| Odpověď bez JSON je čistá řeč | `test_odpoved_bez_jsonu_je_cista_rec` | fallback |
+| JSON i v markdown bloku | `test_json_se_rozpozna_i_v_markdown_bloku` | model to občas zabalí |
+| **Neznámá akce zruší celý plán** | `test_neznama_akce_zrusi_cely_plan` | částečné provedení je horší |
+| Kliknutí bez cíle zruší plán | `test_kliknuti_bez_cile_zrusi_plan` | |
+| Příliš mnoho akcí se odmítne | `test_prilis_mnoho_akci_se_odmitne` | limit 8 |
+| Psaní potřebuje text | `test_psani_potrebuje_text` | |
+| Popis akce je česky a jmenuje prvek | `test_popis_je_cesky_a_obsahuje_nazev_prvku` | jde do hlasu |
+| Akce mimo obrazovku se označí | `test_popis_oznaci_akci_ktera_neni_na_obrazovce` | |
+| Nebezpečná slova | `test_nebezpecna_slova_se_poznaji` | 5 případů |
+| Nebezpečný název tlačítka | `test_nebezpecny_nazev_prvku_se_pozna` | „Smazat“ |
+| **Akce se bez potvrzení neprovedou** | `test_akce_se_bez_potvrzeni_neprovedou` | klíčová záruka |
+| Akce se po potvrzení provedou | `test_akce_se_po_potvrzeni_provedou` | |
+| Potvrzení dostane čitelný popis | `test_potvrzeni_dostane_citelný_popis` | |
+| Nevratná akce se označí | `test_nebezpecna_akce_se_oznaci` | |
+| Chybný plán se neprovede ani nezeptá | `test_chybny_plan_se_neprovede` | |
+| Klik na neexistující prvek selže | `test_klik_na_neexistujici_prvek_selze` | |
+| **Posunutý prvek se neklikne naslepo** | `test_posunuty_prvek_se_neklikne_naslepo` | souřadnicová pojistka |
 | Celé kolo: otázka → odpověď → hlas | `test_cely_kolo_od_otazky_k_odpovedi` | `Engine` se skutečným modelem |
 | Kolo se po dokončení uklidí | `test_kolo_se_uklidí_po_dokonceni` | stav `idle`, `is_busy` |
 | Porovnání verzí | `test_porovnani_verzi` | 7 případů, včetně `v0.10.0 > 0.9.0` |

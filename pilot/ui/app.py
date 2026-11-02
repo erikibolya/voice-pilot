@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import QApplication
 
 from ..engine import Engine
+from .confirm import ConfirmBar, Confirmer
 from .icons import app_icon
 from .tray import Tray
 from .window import MainWindow
@@ -20,9 +21,11 @@ class EventBridge(QObject):
 
 
 class HotkeyBridge(QObject):
-    """Přemostí globální klávesu z vlákna pynputu do hlavního vlákna Qt."""
+    """Přemostí globální klávesy z vlákna pynputu do hlavního vlákna Qt."""
 
     pressed = Signal()
+    confirm = Signal()
+    cancel = Signal()
 
 
 def run(cfg) -> int:
@@ -43,8 +46,14 @@ def run(cfg) -> int:
     bridge.event.connect(tray.receive)
     tray.show()
 
+    confirmer = Confirmer()
+    bar = ConfirmBar(confirmer)
+    engine.confirmer = confirmer.ask
+
     hotkey = HotkeyBridge()
     hotkey.pressed.connect(engine.toggle)
+    hotkey.confirm.connect(lambda: confirmer.answer(True))
+    hotkey.cancel.connect(lambda: confirmer.answer(False))
     listener = _start_hotkey(cfg.hotkey, hotkey)
 
     window.show()
@@ -62,7 +71,13 @@ def _start_hotkey(hotkey: str, bridge: HotkeyBridge):
 
     combo = hotkey if hotkey.startswith("<") else f"<{hotkey}>"
     try:
-        listener = keyboard.GlobalHotKeys({combo: bridge.pressed.emit})
+        listener = keyboard.GlobalHotKeys(
+            {
+                combo: bridge.pressed.emit,
+                "<ctrl>+<alt>+enter": bridge.confirm.emit,
+                "<ctrl>+<alt>+esc": bridge.cancel.emit,
+            }
+        )
         listener.start()
         return listener
     except Exception:

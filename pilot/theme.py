@@ -264,6 +264,17 @@ QListWidget::item:selected {{
     color: {c['text']};
 }}
 
+/* ---------- potvrzovací panel ---------- */
+#ConfirmBar {{
+    background: {c['panel2']};
+    border: 1px solid {c['border']};
+    border-radius: {c['radius']};
+}}
+#ConfirmTitle {{
+    font-size: 14px;
+    font-weight: 600;
+}}
+
 /* ---------- posuvníky ---------- */
 QScrollBar:vertical {{
     background: transparent;
