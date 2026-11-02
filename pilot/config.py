@@ -31,7 +31,7 @@ class Config:
     tts_engine: str = "auto"  # auto | edge | piper
     voice: str = "cs-CZ-VlastaNeural"
     piper_model: str = ""  # cesta k .onnx, když je prázdná, použije se výchozí
-    speech_rate: str = "+8%"
+    speech_rate: str = "+0%"
 
     # --- Oči: UI Automation ---
     max_elements: int = 70

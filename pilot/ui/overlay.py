@@ -149,7 +149,9 @@ class ControlFrame(QWidget):
 
     def __init__(self, screen):
         super().__init__(None)
-        self.screen = screen
+        # QScreen umí Qt mezitím smazat (změna monitorů) — držíme jen jméno
+        self.screen_name = screen.name()
+
         self.setWindowFlags(
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
@@ -171,6 +173,17 @@ class ControlFrame(QWidget):
 
         self.setGeometry(screen.geometry())
 
+    def _obrazovka(self):
+        from PySide6.QtGui import QGuiApplication
+
+        for screen in QGuiApplication.screens():
+            try:
+                if screen.name() == self.screen_name:
+                    return screen
+            except RuntimeError:
+                continue
+        return QGuiApplication.primaryScreen()
+
     def set_theme(self, theme: str) -> None:
         self._tema = theme
         self.update()
@@ -180,7 +193,9 @@ class ControlFrame(QWidget):
             return
         self._aktivni = aktivni
         if aktivni:
-            self.setGeometry(self.screen.geometry())
+            obrazovka = self._obrazovka()
+            if obrazovka is not None:
+                self.setGeometry(obrazovka.geometry())
             self.show()
             self.raise_()
             self._timer.start()

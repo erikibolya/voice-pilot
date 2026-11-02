@@ -95,11 +95,17 @@ class TTSError(RuntimeError):
     pass
 
 
+class _NicNeprehrano(Exception):
+    """Streamování selhalo dřív, než zazněl jediný tón — lze zkusit jinou cestu."""
+
+
 class Speaker:
     def __init__(self, cfg):
         self.cfg = cfg
         CACHE.mkdir(parents=True, exist_ok=True)
         self._engine_used = ""
+        self._prerusit = False
+        self._vystup = None
 
     @property
     def engine_used(self) -> str:
@@ -108,15 +114,23 @@ class Speaker:
     # ---------- veřejné ----------
 
     def say(self, text: str) -> None:
-        """Přečte text. U delších odpovědí mluví dřív, než je celá hotová.
+        """Přečte text.
 
-        Generování hlasu trvá u delší věty přes dvě sekundy a dřív se čekalo
-        na celý soubor. Teď se text rozdělí na věty, první se vyrobí hned a
-        zbytek se připravuje, zatímco už mluvíme.
+        U edge-tts se přehrává už během stahování — první zvuk je slyšet
+        po pár desetinách sekundy místo po celé větě. Když to nevyjde,
+        spadne se zpátky na dělení po větách.
         """
         text = (text or "").strip()
         if not text:
             return
+
+        if self.cfg.tts_engine in ("auto", "edge") and not self._prerusit:
+            try:
+                self._edge_stream(text)
+                self._engine_used = "edge"
+                return
+            except _NicNeprehrano:
+                pass
 
         sentences = split_sentences(text)
         errors: list[str] = []
@@ -149,6 +163,107 @@ class Speaker:
 
         if errors and len(errors) == len(sentences):
             raise TTSError("hlas nefungoval → " + "; ".join(errors))
+
+    # ---------- streamované přehrávání ----------
+
+    def _edge_stream(self, text: str) -> None:
+        """Stahuje zvuk z edge-tts a hraje ho za pochodu."""
+        import edge_tts
+        import miniaudio
+
+        fronta: queue.Queue = queue.Queue()
+        konec = object()
+
+        def producent() -> None:
+            async def bez() -> None:
+                komunikace = edge_tts.Communicate(
+                    text, self.cfg.voice, rate=self.cfg.speech_rate
+                )
+                async for kus in komunikace.stream():
+                    if kus.get("type") == "audio":
+                        fronta.put(kus["data"])
+
+            try:
+                asyncio.run(bez())
+                fronta.put(konec)
+            except Exception as exc:
+                fronta.put(exc)
+
+        threading.Thread(target=producent, daemon=True).start()
+
+        buffer = bytearray()
+        prehrano = 0
+        vystup = None
+        self._prerusit = False
+
+        def predej(konec_streamu: bool) -> None:
+            nonlocal prehrano, vystup
+            if not buffer:
+                return
+            # Menší práh = dřívější první zvuk. 1200 B je zhruba 0,2 s řeči;
+            # dekódování zvládne i buffer uříznutý uprostřed rámce.
+            if not konec_streamu and len(buffer) < 1200:
+                return
+            try:
+                dek = miniaudio.decode(
+                    bytes(buffer),
+                    output_format=miniaudio.SampleFormat.SIGNED16,
+                    nchannels=1,
+                )
+            except Exception:
+                return
+
+            audio = np.frombuffer(dek.samples, dtype=np.int16)
+            if vystup is None:
+                vystup = sd.OutputStream(
+                    samplerate=dek.sample_rate, channels=1, dtype="int16"
+                )
+                vystup.start()
+                self._vystup = vystup
+
+            nove = audio[prehrano:]
+            if nove.size:
+                vystup.write(nove)
+                prehrano = audio.size
+
+        try:
+            while True:
+                if self._prerusit:
+                    return
+                polozka = fronta.get()
+
+                if polozka is konec:
+                    predej(True)
+                    break
+
+                if isinstance(polozka, Exception):
+                    if vystup is None:
+                        raise _NicNeprehrano(str(polozka))
+                    break
+
+                buffer.extend(polozka)
+                predej(False)
+
+            if vystup is None:
+                raise _NicNeprehrano("edge-tts nevrátil zvuk")
+        finally:
+            self._vystup = None
+            if vystup is not None:
+                try:
+                    vystup.stop()
+                    vystup.close()
+                except Exception:
+                    pass
+
+    def stop(self) -> None:
+        """Přeruší právě hrající hlas (uživatel začal mluvit)."""
+        self._prerusit = True
+        vystup = self._vystup
+        if vystup is not None:
+            try:
+                vystup.abort()
+            except Exception:
+                pass
 
     # ---------- výroba jednoho souboru ----------
 

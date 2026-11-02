@@ -62,9 +62,9 @@ Rychlé (bez modelu a sítě): `.venv\Scripts\python.exe -m pytest -q -m "not sl
 | Akce mimo obrazovku se označí | `test_popis_oznaci_akci_ktera_neni_na_obrazovce` | |
 | Nebezpečná slova | `test_nebezpecna_slova_se_poznaji` | 5 případů |
 | Nebezpečný název tlačítka | `test_nebezpecny_nazev_prvku_se_pozna` | „Smazat“ |
-| **Akce se bez potvrzení neprovedou** | `test_akce_se_bez_potvrzeni_neprovedou` | klíčová záruka |
-| Akce se po potvrzení provedou | `test_akce_se_po_potvrzeni_provedou` | |
-| Potvrzení dostane čitelný popis | `test_potvrzeni_dostane_citelný_popis` | |
+| **Akce se bez potvrzení neprovedou** | `test_nebezpecna_akce_se_bez_potvrzeni_neprovede` | klíčová záruka pro nevratné |
+| Běžná akce se provede bez ptání | `test_bezna_akce_se_provede_bez_ptani` | neotravovat u každého kliknutí |
+| Nevratná akce po potvrzení | `test_nebezpecna_akce_se_po_potvrzeni_provede` | |
 | Nevratná akce se označí | `test_nebezpecna_akce_se_oznaci` | |
 | Chybný plán se neprovede ani nezeptá | `test_chybny_plan_se_neprovede` | |
 | Klik na neexistující prvek selže | `test_klik_na_neexistujici_prvek_selze` | |
