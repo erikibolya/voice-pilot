@@ -655,3 +655,26 @@ def test_chybny_plan_se_neprovede(cfg, monkeypatch):
     engine.ask("něco", background=False)
 
     assert provedeno == [], "u chybného plánu se nesmí ani ptát"
+
+
+@pytest.mark.desktop
+def test_snapshot_funguje_i_z_vedlejsiho_vlakna(cfg):
+    """Regrese: UI Automation je COM a musí se inicializovat v každém vlákně.
+
+    Bez toho `uiautomation` tiše vrátí prázdný strom a model nevidí nic.
+    """
+    import threading
+
+    vysledek: dict = {}
+
+    def prace() -> None:
+        snap = eyes.snapshot(cfg)
+        vysledek["okno"] = snap.active_title
+        vysledek["prvku"] = len(snap.elements)
+
+    vlakno = threading.Thread(target=prace)
+    vlakno.start()
+    vlakno.join(30)
+
+    assert vysledek.get("okno"), "ve vlákně se nepřečetlo aktivní okno"
+    assert vysledek.get("prvku", 0) > 0, "ve vlákně se nepřečetly žádné prvky"

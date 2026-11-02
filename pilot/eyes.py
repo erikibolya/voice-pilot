@@ -221,6 +221,25 @@ def _collect(roots: list, cfg, deadline: float) -> list[Element]:
 
 
 def snapshot(cfg) -> Snapshot:
+    """Přečte obrazovku. Bezpečné i z vedlejšího vlákna.
+
+    UI Automation je COM a COM musí být inicializováno v každém vlákně
+    zvlášť. Bez toho `uiautomation` tiše vrátí prázdný strom — a model
+    pak nevidí nic, což vypadá jako „asistent nic neumí“.
+    """
+    import threading
+
+    import uiautomation as auto
+
+    init = getattr(auto, "UIAutomationInitializerInThread", None)
+    if init is not None and threading.current_thread() is not threading.main_thread():
+        with init():
+            return _snapshot(cfg)
+
+    return _snapshot(cfg)
+
+
+def _snapshot(cfg) -> Snapshot:
     snap = Snapshot()
 
     active = None
