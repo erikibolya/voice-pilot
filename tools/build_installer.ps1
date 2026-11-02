@@ -30,6 +30,15 @@ try {
     $Version = $Version.TrimStart("v")
     Krok "Verze: $Version"
 
+    # --- přibalený Python a kola ------------------------------------------
+    Krok "Kontroluji přibalené závislosti"
+    if (-not (Test-Path "installer\vendor\python\python.exe")) {
+        & "$PSScriptRoot\vendor_deps.ps1"
+        if ($LASTEXITCODE -ne 0) { throw "vendor_deps.ps1 selhal" }
+    } else {
+        Hotovo "Python i balíčky jsou připravené"
+    }
+
     # --- ikona ------------------------------------------------------------
     Krok "Generuji ikonu"
     $python = ".venv\Scripts\python.exe"

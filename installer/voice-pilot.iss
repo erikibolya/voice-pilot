@@ -56,6 +56,8 @@ Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\launch.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "bootstrap.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "vendor\python\*"; DestDir: "{app}\python"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "vendor\wheels\*.whl"; DestDir: "{app}\wheels"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\launch.cmd"; IconFilename: "{app}\icon.ico"; WorkingDir: "{app}"
@@ -67,6 +69,8 @@ Filename: "{app}\launch.cmd"; Description: "Spustit {#AppName}"; Flags: nowait p
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\.venv"
+Type: filesandordirs; Name: "{app}\python"
+Type: filesandordirs; Name: "{app}\wheels"
 Type: filesandordirs; Name: "{app}\cache"
 Type: filesandordirs; Name: "{app}\shots"
 Type: filesandordirs; Name: "{app}\pilot\__pycache__"
@@ -94,11 +98,9 @@ begin
              mbError, MB_OK)
     else if ResultCode <> 0 then
       MsgBox('Příprava prostředí selhala (kód ' + IntToStr(ResultCode) + ').' + #13#10 + #13#10 +
-             'Nejčastější příčiny:' + #13#10 +
-             '  • není nainstalovaný Python 3.10 nebo novější' + #13#10 +
-             '  • chybí připojení k internetu' + #13#10 + #13#10 +
              'Podrobnosti jsou v souboru:' + #13#10 +
-             ExpandConstant('{app}\install.log'),
+             ExpandConstant('{app}\install.log') + #13#10 + #13#10 +
+             'Zkus instalaci spustit znovu; pokud to nepomůže, nahlas chybu na GitHubu.',
              mbError, MB_OK);
   end;
 end;
