@@ -78,6 +78,8 @@ def run(cfg) -> int:
 
     # model hlasu se načte dřív, než ho bude potřeba
     engine.speaker.prewarm()
+    # a Whisper taky — jinak první dotaz platí ~4,5 s navíc
+    engine.transcriber.prewarm()
 
     watcher = HotkeyWatcher(cfg.hotkey, keys.started.emit, keys.stopped.emit)
     started = watcher.start()

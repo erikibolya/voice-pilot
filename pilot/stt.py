@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Callable
 
@@ -69,6 +70,10 @@ class Transcriber:
         self.cfg = cfg
         self._model = None
         self.device_used = ""
+
+    def prewarm(self) -> None:
+        """Načte model na pozadí, aby první dotaz nečekal na jeho načtení."""
+        threading.Thread(target=self._load, daemon=True).start()
 
     def _load(self):
         if self._model is not None:

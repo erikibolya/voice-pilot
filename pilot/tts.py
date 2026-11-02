@@ -13,6 +13,8 @@ import threading
 import wave
 from pathlib import Path
 
+from typing import Callable
+
 import numpy as np
 import sounddevice as sd
 
@@ -106,6 +108,18 @@ class Speaker:
         self._engine_used = ""
         self._prerusit = False
         self._vystup = None
+        self.on_first_audio: Callable[[], None] | None = None
+        self._prvni_zvuk = False
+
+    def _oznam_prvni_zvuk(self) -> None:
+        if self._prvni_zvuk:
+            return
+        self._prvni_zvuk = True
+        if self.on_first_audio is not None:
+            try:
+                self.on_first_audio()
+            except Exception:
+                pass
 
     @property
     def engine_used(self) -> str:
@@ -126,6 +140,7 @@ class Speaker:
 
         # nový výrok ruší předchozí přerušení
         self._prerusit = False
+        self._prvni_zvuk = False
 
         if self.cfg.tts_engine in ("auto", "edge") and not self._prerusit:
             try:
@@ -228,6 +243,7 @@ class Speaker:
             if nove.size:
                 vystup.write(nove)
                 prehrano = audio.size
+                self._oznam_prvni_zvuk()
 
         try:
             while True:
@@ -401,6 +417,7 @@ class Speaker:
 
     def _play(self, path: Path) -> None:
         audio, rate = self._decode(path)
+        self._oznam_prvni_zvuk()
         sd.play(audio, rate)
         sd.wait()
 

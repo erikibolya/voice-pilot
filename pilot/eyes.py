@@ -112,6 +112,17 @@ class Snapshot:
         return None
 
 
+def release(snap: "Snapshot") -> None:
+    """Zahodí COM odkazy na prvky — a to ve vlákně, které je vytvořilo.
+
+    UI Automation objekty patří do apartmentu svého vlákna. Když je uvolní
+    jiné vlákno (nebo garbage collector), Windows vrátí RPC_E_DISCONNECTED
+    a aplikace spadne. Data (jméno, poloha) zůstávají, jen se pustí COM.
+    """
+    for element in snap.elements:
+        element.control = None
+
+
 def _short(text: str, limit: int) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
