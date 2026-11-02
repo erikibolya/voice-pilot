@@ -137,14 +137,21 @@ změřeno.
 
 | | edge-tts (Microsoft) | Piper (lokální) |
 |---|---|---|
+| První zvuk | 1,1–2,2 s | **0,25 s** |
 | Kvalita | přirozená | robotičtější, ale srozumitelná |
-| První zvuk | ~1,6 s | **~0,2 s** |
 | Internet | potřeba | ne |
-| Velikost | — | 63 MB model |
+| Cena | zdarma | zdarma |
+| Velikost | — | 63 MB model + 20 MB balíček |
 
 Přepíná se v nastavení (Řeč) nebo `tts_engine` v `config.json`.
 Piper se doinstaluje přes `run.py --setup-piper`, výchozí je `auto`
-(edge, a když vypadne net, přepne na Piper).
+(edge, a když vypadne net, přepne na Piper). Model se načítá na pozadí
+při startu, takže první odpověď nečeká.
+
+**Proč není lepší lokální hlas:** kvalitnější lokální modely existují, ale
+jsou řádově těžší — na tuhle grafiku by se počítaly déle než cloud, takže
+by to bylo pomalejší, ne rychlejší. Piper je z otevřených českých hlasů
+jediný, který je zároveň rychlý a zdarma.
 
 ## Nastavení
 
