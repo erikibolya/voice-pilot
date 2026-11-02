@@ -191,6 +191,42 @@ def test_normalize_srovna_tichy_mikrofon():
     assert float(np.abs(out).max()) == pytest.approx(0.9, rel=1e-3)
 
 
+def test_je_ascii_rozpozna_diakritiku():
+    from pilot.tts import _je_ascii
+
+    assert _je_ascii("C:/Users/eriki/voice-pilot")
+    assert not _je_ascii("D:/Users/eriki/Výchozí projekt")
+
+
+def test_espeak_data_lezi_na_ceste_bez_diakritiky():
+    """`espeak-ng` je knihovna v C a cestu s diakritikou nepřečte."""
+    from pilot.tts import _je_ascii, espeak_data_root
+
+    root = espeak_data_root()
+    if root is None:
+        pytest.skip("Piper není nainstalovaný")
+
+    assert (root / "espeak-ng-data" / "phontab").exists()
+    assert _je_ascii(str(root))
+
+
+@pytest.mark.slow
+def test_piper_vyrobi_zvuk(cfg):
+    from dataclasses import replace
+
+    from pilot.tts import Speaker
+
+    model = Path("models/cs_CZ-jirka-medium.onnx")
+    if not model.exists():
+        pytest.skip("model Piperu není stažený (run.py --setup-piper)")
+
+    nastaveni = replace(cfg, tts_engine="piper", piper_model=str(model))
+    path = Speaker(nastaveni)._piper("Zkouška hlasu.")
+
+    assert path.exists()
+    assert path.stat().st_size > 10_000
+
+
 def test_normalize_nedela_nic_s_tisem():
     from pilot.stt import normalize
 

@@ -28,6 +28,12 @@ WHISPER_SIZES = [
     ("small — nejrychlejší (0,5 GB)", "small"),
 ]
 
+ENGINES = [
+    ("Automaticky — edge, když vypadne net, přepne na Piper", "auto"),
+    ("edge-tts — nejlepší kvalita, potřebuje internet", "edge"),
+    ("Piper — lokální a rychlý, robotičtější", "piper"),
+]
+
 
 class SettingsDialog(QDialog):
     def __init__(self, cfg, parent=None):
@@ -52,6 +58,12 @@ class SettingsDialog(QDialog):
             self.voice.addItem(label, value)
         self._select(self.voice, cfg.voice)
         form.addRow("Hlas", self.voice)
+
+        self.engine = QComboBox()
+        for label, value in ENGINES:
+            self.engine.addItem(label, value)
+        self._select(self.engine, cfg.tts_engine)
+        form.addRow("Řeč", self.engine)
 
         self.model = QComboBox()
         for label, value in MODELS:
@@ -90,6 +102,7 @@ class SettingsDialog(QDialog):
     def _save(self) -> None:
         self.cfg.hotkey = self.hotkey.text().strip() or "f9"
         self.cfg.voice = self.voice.currentData()
+        self.cfg.tts_engine = self.engine.currentData()
         self.cfg.model_id = self.model.currentData()
         self.cfg.whisper_model = self.whisper.currentData()
         self.cfg.save()

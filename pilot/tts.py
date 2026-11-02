@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import queue
 import re
 import shutil
 import subprocess
 import tempfile
 import threading
+import wave
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +18,48 @@ import sounddevice as sd
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "cache" / "tts"
+
+_PIPER_VOICES: dict[str, object] = {}
+
+
+def _je_ascii(text: str) -> bool:
+    return all(ord(ch) < 128 for ch in text)
+
+
+def espeak_data_root() -> Path | None:
+    """Najde data pro výslovnost, kterou Piper potřebuje.
+
+    `espeak-ng` je knihovna v C a na Windows nezvládne cestu s diakritikou
+    („Výchozí projekt“). Když balíček leží na takové cestě, data se jednou
+    zkopírují do %LOCALAPPDATA%, kde je cesta čistě ASCII.
+    """
+    try:
+        import piper
+    except Exception:
+        return None
+
+    balicek = Path(piper.__file__).resolve().parent
+    data = balicek / "espeak-ng-data"
+    if not (data / "phontab").exists():
+        return None
+
+    if _je_ascii(str(balicek)):
+        return balicek
+
+    cil = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "voice-pilot" / "espeak"
+    if not (cil / "espeak-ng-data" / "phontab").exists():
+        cil.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(data, cil / "espeak-ng-data", dirs_exist_ok=True)
+    return cil
+
+
+def _piper_voice(model: Path):
+    key = str(model)
+    if key not in _PIPER_VOICES:
+        from piper import PiperVoice
+
+        _PIPER_VOICES[key] = PiperVoice.load(str(model))
+    return _PIPER_VOICES[key]
 
 
 def split_sentences(text: str, limit: int = 180) -> list[str]:
@@ -150,21 +194,33 @@ class Speaker:
                 f"Piper model nenalezen ({model}). Spusť: python run.py --setup-piper"
             )
 
+        root = espeak_data_root()
+        if root is not None:
+            os.environ["ESPEAK_DATA_PATH"] = str(root)
+
         out = CACHE / "speech.wav"
-        exe = shutil.which("piper")
-        if exe:
-            cmd = [exe, "-m", str(model), "-f", str(out)]
-            proc = subprocess.run(cmd, input=text.encode("utf-8"), capture_output=True)
-            if proc.returncode != 0:
-                raise TTSError(proc.stderr.decode("utf-8", "replace")[:200])
+
+        try:
+            voice = _piper_voice(model)
+        except ImportError:
+            voice = None
+
+        if voice is not None:
+            with wave.open(str(out), "wb") as wf:
+                voice.synthesize_wav(text, wf)
             return out
 
-        # python API balíčku piper-tts
-        from piper import PiperVoice
+        exe = shutil.which("piper")
+        if not exe:
+            raise TTSError("Piper není nainstalovaný. Spusť: python run.py --setup-piper")
 
-        voice = PiperVoice.load(str(model))
-        with open(out, "wb") as fh:
-            voice.synthesize_wav(text, fh)
+        proc = subprocess.run(
+            [exe, "-m", str(model), "-f", str(out)],
+            input=text.encode("utf-8"),
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            raise TTSError(proc.stderr.decode("utf-8", "replace")[:200])
         return out
 
     # ---------- přehrání ----------

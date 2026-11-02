@@ -98,6 +98,19 @@ Microsoftu (proto i jedno slovo trvá skoro sekundu), zbytek je model
 a samotné generování řeči. `beam_size` ani velikost promptu s tím nehnou —
 změřeno.
 
+### Který hlas
+
+| | edge-tts (Microsoft) | Piper (lokální) |
+|---|---|---|
+| Kvalita | přirozená | robotičtější, ale srozumitelná |
+| První zvuk | ~1,6 s | **~0,2 s** |
+| Internet | potřeba | ne |
+| Velikost | — | 63 MB model |
+
+Přepíná se v nastavení (Řeč) nebo `tts_engine` v `config.json`.
+Piper se doinstaluje přes `run.py --setup-piper`, výchozí je `auto`
+(edge, a když vypadne net, přepne na Piper).
+
 ## Nastavení
 
 V okně přes ozubené kolo: klávesa, hlas, model a velikost modelu pro přepis.

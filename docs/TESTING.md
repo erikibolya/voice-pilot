@@ -29,6 +29,9 @@ Rychlé (bez modelu a sítě): `.venv\Scripts\python.exe -m pytest -q -m "not sl
 | Dlouhá věta se dělí u čárky | `test_dlouha_veta_se_rozdeli_u_carky` | |
 | Části neztratí slova | `test_casti_neztrati_slova` | |
 | **Hlas mluví dřív, než je celý hotový** | `test_hlas_zacne_mluvit_driv_nez_je_cely_hotovy` | regrese odezvy |
+| Piper vyrobí zvuk | `test_piper_vyrobi_zvuk` | 63 MB model, offline |
+| Rozpoznání diakritiky v cestě | `test_je_ascii_rozpozna_diakritiku` | jednotka |
+| **Data pro výslovnost leží na ASCII cestě** | `test_espeak_data_lezi_na_ceste_bez_diakritiky` | regrese: `espeak-ng` je C knihovna |
 | Model odpoví česky | `test_model_odpovi_cesky` | OpenCode API |
 | Celé kolo: otázka → odpověď → hlas | `test_cely_kolo_od_otazky_k_odpovedi` | `Engine` se skutečným modelem |
 | Kolo se po dokončení uklidí | `test_kolo_se_uklidí_po_dokonceni` | stav `idle`, `is_busy` |
