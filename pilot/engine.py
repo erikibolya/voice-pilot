@@ -91,6 +91,7 @@ class Engine:
         if self._busy:
             self._log("Počkej, ještě dodělávám předchozí dotaz.", "warn")
             return
+        self.speaker.stop()
         sd.stop()
         _beep(880)
         try:
@@ -207,29 +208,23 @@ class Engine:
             }
         )
         self._emit({"type": "control", "on": True})
-        self._set_state(THINKING, "čekám na potvrzení")
 
+        # Ptáme se jen u nevratných věcí. Běžné kliknutí proběhne rovnou,
+        # člověk dostane jen krátký výsledek — ne vyprávění po krocích.
         if nebezpecna:
-            otazka = (
-                f"{say} Pozor, tahle akce se nedá vzít zpět. "
-                f"Chystám se {popis}. Opravdu potvrdit?"
-            )
-        else:
-            otazka = f"{say} Chystám se {popis}. Potvrdit?"
+            self._set_state(THINKING, "čekám na potvrzení")
+            self._speak(f"Pozor, tohle se nedá vzít zpět: {popis}. Potvrdit?")
+            try:
+                potvrzeno = bool(self.confirmer(popis, True))
+            except Exception as exc:
+                self._log(f"Potvrzení selhalo: {exc}", "error")
+                potvrzeno = False
 
-        self._speak(otazka)
-
-        try:
-            potvrzeno = bool(self.confirmer(popis, nebezpecna))
-        except Exception as exc:
-            self._log(f"Potvrzení selhalo: {exc}", "error")
-            potvrzeno = False
-
-        if not potvrzeno:
-            self._emit({"type": "executed", "results": [], "cancelled": True})
-            self._speak("Zrušeno.")
-            self._done()
-            return
+            if not potvrzeno:
+                self._emit({"type": "executed", "results": [], "cancelled": True})
+                self._speak("Zrušeno.")
+                self._done()
+                return
 
         vysledky: list[str] = []
         for akce in plan.actions:
@@ -244,7 +239,11 @@ class Engine:
         self._emit(
             {"type": "executed", "results": vysledky, "cancelled": False, "ok": vsechno}
         )
-        self._speak("Hotovo." if vsechno else "Něco se nepovedlo, podívej se do okna.")
+
+        if say:
+            self._speak(say)
+        elif not vsechno:
+            self._speak("Nepovedlo se to.")
         self._done()
 
     def _speak(self, text: str) -> None:

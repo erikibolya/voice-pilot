@@ -90,16 +90,19 @@ Model **nesmí** říct „klikni na souřadnice 812, 431“. Smí jen odkázat 
 číslo prvku, který jsme mu ukázali ve snímku obrazovky. Co v seznamu není,
 se nikdy neprovede.
 
-Každá akce se nejdřív nahlas ohlásí a čeká na potvrzení:
+Každá akce, která **nejde vzít zpět**, se nejdřív nahlas ohlásí a čeká na
+potvrzení. Běžné kliknutí proběhne rovnou — ptát se u každého kliknutí je
+otravné a zdržuje.
+
+Nevratné věci (smazat, odeslat, zaplatit, odinstalovat) se poznají i podle
+**názvu tlačítka**, ne jen podle textu.
 
 | | |
 |---|---|
 | **Ctrl+Alt+Enter** | provést |
 | **Ctrl+Alt+Esc** | zrušit |
 | panel | vpravo dole, **nebere fokus** — psaní zůstane v aplikaci, kterou ovládáš |
-
-Nevratné akce (smazat, odeslat, zaplatit, odinstalovat) dostanou varování
-navíc a jiné tlačítko. Když do 45 sekund nikdo neodpoví, platí „ne“.
+| po 45 s | platí „ne“ |
 
 Když se chystám něco provést, **rozsvítí se rám kolem všech obrazovek**
 s nápisem PILOT OVLÁDÁ POČÍTAČ. Je vidět, že počítač zrovna není jen tvůj —
@@ -117,9 +120,9 @@ Naměřeno na RTX 3070, `python bench.py`:
 |---|---|
 | Přepis 5 s řeči na GPU | 1,1 s |
 | Čtení obrazovky | 0,9 s — běží **souběžně** s přepisem |
-| Model | 1,4 s |
-| Hlas do prvního zvuku | 1,6 s — zbytek se vyrábí při mluvení |
-| **Celkem po domluvení** | **~4 s** |
+| Model | 1,4–2,8 s — kolísá podle vytížení poskytovatele |
+| Hlas do prvního zvuku | 1,1 s — streamuje se za pochodu |
+| **Celkem po domluvení** | **~4,5 s** |
 
 **Není to Python.** Práci dělají knihovny v C++ (CTranslate2 pro Whisper,
 UI Automation, miniaudio); Python je jen lepidlo mezi nimi, jeho vlastní režie

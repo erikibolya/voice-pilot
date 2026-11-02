@@ -275,6 +275,7 @@ def test_hlas_zacne_mluvit_driv_nez_je_cely_hotovy(cfg, monkeypatch):
     """Regrese: dřív se čekalo na vyrobení celé odpovědi, než zazněl první zvuk."""
     import time
 
+    from pilot import tts
     from pilot.tts import Speaker
 
     reci = Speaker(cfg)
@@ -288,6 +289,10 @@ def test_hlas_zacne_mluvit_driv_nez_je_cely_hotovy(cfg, monkeypatch):
     def predstirane_prehrani(path) -> None:  # noqa: ANN001
         udalosti.append(("prehrani", -1))
 
+    # vynutíme záložní cestu po větách; streamování by šlo na síť
+    monkeypatch.setattr(
+        reci, "_edge_stream", lambda text: (_ for _ in ()).throw(tts._NicNeprehrano("test"))
+    )
     monkeypatch.setattr(reci, "_render", predstirana_vyroba)
     monkeypatch.setattr(reci, "_play", predstirane_prehrani)
 
@@ -545,7 +550,7 @@ def _reply_s_akci(target: int = 1):
     return Reply(say="Jdu na to.", plan=plan)
 
 
-def _engine_pro_akce(cfg, monkeypatch, potvrzeno: bool):
+def _engine_pro_akce(cfg, monkeypatch, confirmer, target: int = 1):
     from pilot import actions as act
 
     provedeno: list = []
@@ -557,52 +562,50 @@ def _engine_pro_akce(cfg, monkeypatch, potvrzeno: bool):
     engine = Engine(cfg, on_event=lambda e: None)
     monkeypatch.setattr(engine.speaker, "say", lambda t: None)
     monkeypatch.setattr(
-        engine.brain, "look_and_answer", lambda text, snap: _reply_s_akci()
+        engine.brain, "look_and_answer", lambda text, snap: _reply_s_akci(target)
     )
-    engine.confirmer = lambda popis, nebezpecna: potvrzeno
+    engine.confirmer = confirmer
     return engine, provedeno
 
 
-def test_akce_se_bez_potvrzeni_neprovedou(cfg, monkeypatch):
-    engine, provedeno = _engine_pro_akce(cfg, monkeypatch, potvrzeno=False)
+def test_bezna_akce_se_provede_bez_ptani(cfg, monkeypatch):
+    """Běžné kliknutí nemá otravovat — provede se a basta."""
+    otazky: list = []
+    engine, provedeno = _engine_pro_akce(
+        cfg, monkeypatch, lambda p, d: otazky.append((p, d)) or False, target=1
+    )
 
     engine.ask("klikni na přejmenovat", background=False)
 
-    assert provedeno == []
+    assert len(provedeno) == 1, "běžná akce se má provést rovnou"
+    assert otazky == [], "u běžné akce se nemá ptát"
     assert engine.state == "idle"
 
 
-def test_akce_se_po_potvrzeni_provedou(cfg, monkeypatch):
-    engine, provedeno = _engine_pro_akce(cfg, monkeypatch, potvrzeno=True)
+def test_nebezpecna_akce_se_bez_potvrzeni_neprovede(cfg, monkeypatch):
+    """Nevratná věc bez potvrzení neproběhne. To je ta záruka."""
+    otazky: list = []
+    engine, provedeno = _engine_pro_akce(
+        cfg, monkeypatch, lambda p, d: otazky.append((p, d)) or False, target=2
+    )
 
-    engine.ask("klikni na přejmenovat", background=False)
+    engine.ask("smaž to", background=False)
+
+    assert provedeno == [], "bez potvrzení se nesmí nic provést"
+    assert len(otazky) == 1, "u nevratné akce se ptát musí"
+    popis, nebezpecna = otazky[0]
+    assert nebezpecna is True
+    assert "Smazat" in popis, "popis musí jmenovat prvek"
+
+
+def test_nebezpecna_akce_se_po_potvrzeni_provede(cfg, monkeypatch):
+    engine, provedeno = _engine_pro_akce(cfg, monkeypatch, lambda p, d: True, target=2)
+
+    engine.ask("smaž to", background=False)
 
     assert len(provedeno) == 1
-    assert provedeno[0].target == 1
+    assert provedeno[0].target == 2
     assert engine.state == "idle"
-
-
-def test_potvrzeni_dostane_citelný_popis(cfg, monkeypatch):
-    from pilot import actions as act
-
-    monkeypatch.setattr(act, "execute", lambda a, s: "ok")
-    monkeypatch.setattr("pilot.engine.eyes.snapshot", lambda c: _snap_pro_akce())
-
-    from pilot.engine import Engine
-
-    engine = Engine(cfg, on_event=lambda e: None)
-    monkeypatch.setattr(engine.speaker, "say", lambda t: None)
-    monkeypatch.setattr(engine.brain, "look_and_answer", lambda t, s: _reply_s_akci())
-
-    otazky: list[tuple[str, bool]] = []
-    engine.confirmer = lambda popis, nebezpecna: otazky.append((popis, nebezpecna)) or False
-
-    engine.ask("klikni", background=False)
-
-    assert otazky, "potvrzení se vůbec nezeptalo"
-    popis, nebezpecna = otazky[0]
-    assert "Přejmenovat" in popis
-    assert nebezpecna is False
 
 
 def test_nebezpecna_akce_se_oznaci(cfg, monkeypatch):
