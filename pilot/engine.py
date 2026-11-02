@@ -8,11 +8,12 @@ logika kola (nahrát → přepsat → podívat se → odpovědět) existuje jedn
 from __future__ import annotations
 
 import threading
+import time
 from typing import Callable
 
 import sounddevice as sd
 
-from . import eyes
+from . import actions, eyes
 from .brain import Brain
 from .stt import Mic, Transcriber
 from .tts import Speaker
@@ -46,6 +47,9 @@ class Engine:
 
         self.state = IDLE
         self._busy = False
+
+        # Kdo potvrzuje akce. Výchozí je "ne" — bez obsluhy se nic neprovede.
+        self.confirmer: Callable[[str, bool], bool] = lambda popis, nebezpecna: False
 
     # ------------------------------------------------------------- stav
 
@@ -177,15 +181,81 @@ class Engine:
             self._fail(f"Model neodpověděl: {exc}")
             return
 
+        plan = reply.plan
+        if plan.error:
+            self._log(f"Plán neprošel: {plan.error}", "error")
+
         self._emit({"type": "answer", "text": reply.say})
+
+        if not plan.actions:
+            self._speak(reply.say)
+            self._done()
+            return
+
+        self._run_plan(plan, snap, reply.say)
+
+    def _run_plan(self, plan, snap, say: str) -> None:
+        popis = actions.describe(plan, snap)
+        nebezpecna = actions.je_nebezpecny(plan, snap)
+
+        self._emit(
+            {
+                "type": "plan",
+                "say": say,
+                "description": popis,
+                "destructive": nebezpecna,
+            }
+        )
+        self._set_state(THINKING, "čekám na potvrzení")
+
+        if nebezpecna:
+            otazka = (
+                f"{say} Pozor, tahle akce se nedá vzít zpět. "
+                f"Chystám se {popis}. Opravdu potvrdit?"
+            )
+        else:
+            otazka = f"{say} Chystám se {popis}. Potvrdit?"
+
+        self._speak(otazka)
+
+        try:
+            potvrzeno = bool(self.confirmer(popis, nebezpecna))
+        except Exception as exc:
+            self._log(f"Potvrzení selhalo: {exc}", "error")
+            potvrzeno = False
+
+        if not potvrzeno:
+            self._emit({"type": "executed", "results": [], "cancelled": True})
+            self._speak("Zrušeno.")
+            self._done()
+            return
+
+        vysledky: list[str] = []
+        for akce in plan.actions:
+            try:
+                vysledky.append(actions.execute(akce, snap))
+                time.sleep(0.12)
+            except Exception as exc:
+                vysledky.append(f"chyba: {exc}")
+                break
+
+        vsechno = len(vysledky) == len(plan.actions)
+        self._emit(
+            {"type": "executed", "results": vysledky, "cancelled": False, "ok": vsechno}
+        )
+        self._speak("Hotovo." if vsechno else "Něco se nepovedlo, podívej se do okna.")
+        self._done()
+
+    def _speak(self, text: str) -> None:
         self._set_state(SPEAKING)
         try:
-            self.speaker.say(reply.say)
+            self.speaker.say(text)
         except Exception as exc:
             self._log(f"Hlas selhal: {exc}", "error")
-        finally:
-            self._busy = False
-            self._set_state(IDLE)
+
+    def _done(self) -> None:
+        self._busy = False
+        self._set_state(IDLE)
 
     def _fail(self, message: str) -> None:
         self._busy = False

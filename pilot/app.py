@@ -29,11 +29,23 @@ class Pilot:
     def __init__(self, cfg):
         self.cfg = cfg
         self.engine = Engine(cfg, on_event=self._on_event)
+        self.engine.confirmer = self._potvrd
         self.mic = self.engine.mic
         self.transcriber = self.engine.transcriber
         self.speaker = self.engine.speaker
         self.brain = self.engine.brain
         self.last_answer = ""
+
+    def _potvrd(self, popis: str, nebezpecna: bool) -> bool:
+        print("")
+        print(f"  akce: {popis}")
+        if nebezpecna:
+            print("  !! tohle se nedá vzít zpět")
+        try:
+            odpoved = input("  provést? [a/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return False
+        return odpoved in ("a", "ano", "y", "yes")
 
     # --------------------------------------------------- události
 

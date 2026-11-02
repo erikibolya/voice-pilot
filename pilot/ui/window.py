@@ -221,6 +221,11 @@ class MainWindow(QMainWindow):
         self.answer.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         card_layout.addWidget(self.answer)
 
+        self.plan_label = QLabel("")
+        self.plan_label.setObjectName("Muted")
+        self.plan_label.setWordWrap(True)
+        card_layout.addWidget(self.plan_label)
+
         card_layout.addStretch(1)
         layout.addWidget(card, 1)
 
@@ -316,7 +321,23 @@ class MainWindow(QMainWindow):
 
         elif kind == "answer":
             self.answer.setText(payload["text"])
+            self.plan_label.setText("")
             self._log("Odpověď přečtena nahlas.")
+
+        elif kind == "plan":
+            popis = payload["description"]
+            prefix = "Pozor, nevratné: " if payload["destructive"] else "Chystám se "
+            self.plan_label.setText(prefix + popis)
+            self._log(f"Čekám na potvrzení — {popis}")
+
+        elif kind == "executed":
+            if payload.get("cancelled"):
+                self.plan_label.setText("Zrušeno, nic jsem neudělal.")
+                self._log("Akce zrušena.")
+            else:
+                vysledky = payload.get("results", [])
+                self.plan_label.setText("Hotovo: " + "; ".join(vysledky))
+                self._log(f"Provedeno {len(vysledky)} akcí.")
 
         elif kind == "log":
             self._log(payload["text"])

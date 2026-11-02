@@ -51,6 +51,8 @@ class Element:
     y: int
     w: int
     h: int
+    # živý ovládací prvek pro UI Automation; do textu pro model nepatří
+    control: object | None = field(default=None, repr=False, compare=False)
 
     @property
     def center(self) -> tuple[int, int]:
@@ -209,6 +211,7 @@ def _collect(roots: list, cfg, deadline: float) -> list[Element]:
                     y=r.top,
                     w=r.right - r.left,
                     h=r.bottom - r.top,
+                    control=child,
                 )
             )
             if len(out) >= cfg.max_elements:
