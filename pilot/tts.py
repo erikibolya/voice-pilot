@@ -124,6 +124,9 @@ class Speaker:
         if not text:
             return
 
+        # nový výrok ruší předchozí přerušení
+        self._prerusit = False
+
         if self.cfg.tts_engine in ("auto", "edge") and not self._prerusit:
             try:
                 self._edge_stream(text)
@@ -295,7 +298,7 @@ class Speaker:
                 if engine == "edge":
                     path = self._edge(text, index)
                 elif engine == "piper":
-                    path = self._piper(text)
+                    path = self._piper(text, index)
                 else:
                     raise TTSError(f"neznámý engine {engine!r}")
                 self._engine_used = engine
@@ -321,7 +324,7 @@ class Speaker:
 
     # ---------- piper ----------
 
-    def _piper(self, text: str) -> Path:
+    def _piper(self, text: str, index: int = 0) -> Path:
         model = Path(self.cfg.piper_model) if self.cfg.piper_model else _default_piper()
         if not model.exists():
             raise TTSError(
@@ -332,7 +335,9 @@ class Speaker:
         if root is not None:
             os.environ["ESPEAK_DATA_PATH"] = str(root)
 
-        out = CACHE / "speech.wav"
+        # Vlastní soubor pro každou část — jinak druhá věta přepíše první
+        # dřív, než se stihne přečíst, a přehrávač dostane prázdno.
+        out = CACHE / f"speech-{index}.wav"
 
         try:
             voice = _piper_voice(model)
@@ -342,19 +347,22 @@ class Speaker:
         if voice is not None:
             with wave.open(str(out), "wb") as wf:
                 voice.synthesize_wav(text, wf)
-            return out
+        else:
+            exe = shutil.which("piper")
+            if not exe:
+                raise TTSError("Piper není nainstalovaný. Spusť: python run.py --setup-piper")
 
-        exe = shutil.which("piper")
-        if not exe:
-            raise TTSError("Piper není nainstalovaný. Spusť: python run.py --setup-piper")
+            proc = subprocess.run(
+                [exe, "-m", str(model), "-f", str(out)],
+                input=text.encode("utf-8"),
+                capture_output=True,
+            )
+            if proc.returncode != 0:
+                raise TTSError(proc.stderr.decode("utf-8", "replace")[:200])
 
-        proc = subprocess.run(
-            [exe, "-m", str(model), "-f", str(out)],
-            input=text.encode("utf-8"),
-            capture_output=True,
-        )
-        if proc.returncode != 0:
-            raise TTSError(proc.stderr.decode("utf-8", "replace")[:200])
+        if not out.exists() or out.stat().st_size < 2000:
+            raise TTSError("Piper vyrobil prázdný soubor")
+
         return out
 
     # ---------- přehrání ----------
@@ -367,14 +375,19 @@ class Speaker:
         načte po bajtech a dekóduje z paměti.
         """
         raw = path.read_bytes()
+        if len(raw) < 44:
+            raise TTSError(f"Zvukový soubor je prázdný ({path.name})")
 
         if path.suffix.lower() == ".wav":
             import io
             import wave
 
-            with wave.open(io.BytesIO(raw), "rb") as wf:
-                rate = wf.getframerate()
-                audio = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
+            try:
+                with wave.open(io.BytesIO(raw), "rb") as wf:
+                    rate = wf.getframerate()
+                    audio = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
+            except Exception as exc:
+                raise TTSError(f"WAV se nepodařilo přečíst ({path.name}): {exc}") from exc
             return audio, rate
 
         import miniaudio

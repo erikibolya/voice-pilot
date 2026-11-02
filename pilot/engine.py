@@ -14,6 +14,7 @@ from typing import Callable
 import sounddevice as sd
 
 from . import actions, eyes
+from .actions import Action
 from .brain import Brain
 from .stt import Mic, Transcriber
 from .tts import Speaker
@@ -226,10 +227,36 @@ class Engine:
                 self._done()
                 return
 
+        # Čerstvý snímek v TOMTO vlákně: COM objekty z vlákna, kde se četla
+        # obrazovka pro model, už nemusí existovat (RPC_E_DISCONNECTED).
+        cerstvy = None
+        try:
+            cerstvy = eyes.snapshot(self.cfg)
+        except Exception as exc:
+            self._log(f"Obrazovku už nejde přečíst: {exc}", "error")
+
         vysledky: list[str] = []
         for akce in plan.actions:
             try:
-                vysledky.append(actions.execute(akce, snap))
+                cil = akce
+                if cerstvy is not None and akce.target is not None:
+                    puvodni = snap.by_index(akce.target)
+                    if puvodni is not None:
+                        novy = cerstvy.find_like(puvodni)
+                        if novy is None:
+                            raise actions.ActionError(
+                                f"„{puvodni.name}“ už na obrazovce není"
+                            )
+                        cil = Action(
+                            type=akce.type,
+                            target=novy.index,
+                            text=akce.text,
+                            keys=akce.keys,
+                            direction=akce.direction,
+                            amount=akce.amount,
+                        )
+
+                vysledky.append(actions.execute(cil, cerstvy or snap))
                 time.sleep(0.12)
             except Exception as exc:
                 vysledky.append(f"chyba: {exc}")
