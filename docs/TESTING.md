@@ -25,6 +25,9 @@ Rychlé (bez modelu a sítě): `.venv\Scripts\python.exe -m pytest -q -m "not sl
 | Srovnání hlasitosti z tichého mikrofonu | `test_normalize_srovna_tichy_mikrofon` | jednotka |
 | Srovnání hlasitosti nerozbije ticho | `test_normalize_nedela_nic_s_tisem` | jednotka |
 | Model odpoví česky | `test_model_odpovi_cesky` | OpenCode API |
+| Kontrola mozku při startu | `test_preflight_najde_bezici_opencode` | `/api/info` |
+| Srozumitelná hláška, když služba neběží | `test_preflight_hlasi_kdyz_sluzba_nebezi` | distribuce |
+| Srozumitelná hláška, když chybí přihlášení | `test_preflight_hlasi_chybejici_prihlaseni` | distribuce |
 | **Celé kolo: otázka → odpověď** | `test_cely_kolo_od_otazky_k_odpovedi` | `Pilot.handle` se skutečným modelem |
 | Paměť předchozí věty | `test_pilot_si_pamatuje_predchozi_vetu` | historie v promptu |
 

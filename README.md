@@ -41,6 +41,32 @@ nemůže kliknout na něco, co mu neukážeme.
 
 ## Instalace
 
+### Pro běžné použití (jeden dvojklik)
+
+Stačí `install.bat`. Vytvoří si vlastní Python prostředí, nainstaluje
+závislosti a udělá ikonu na ploše a v nabídce Start.
+
+```
+install.bat
+```
+
+Volitelné přepínače (přes `powershell -File install.ps1 ...`):
+
+| Přepínač | Význam |
+|---|---|
+| `-InstallDir "D:\Apps\VoicePilot"` | jinam než do `%LOCALAPPDATA%\VoicePilot` |
+| `-SkipModel` | nestahovat model (3 GB) při instalaci |
+| `-SkipCuda` | neinstalovat CUDA knihovny (pojede na CPU) |
+| `-NoShortcut` | nedělat ikonu na ploše |
+
+Instalace **nepotřebuje správce** a nic nemění v systému — všechno skončí
+v jednom adresáři. Odinstalace = smazat ten adresář a dvě zástupce.
+
+**Co instalace neumí zařídit:** OpenCode. Aplikace ho potřebuje jako mozek;
+bez něj se spustí, ale hned řekne, že nemá čím myslet.
+
+### Pro vývoj
+
 ```bash
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt

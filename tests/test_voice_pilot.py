@@ -202,6 +202,39 @@ def test_model_odpovi_cesky(cfg):
     assert any(ch in odpoved for ch in "áčďéěíňóřšťúůýž"), "odpověď nevypadá česky"
 
 
+# --------------------------------------------------------------- kontrola mozku
+
+
+def test_preflight_najde_bezici_opencode(cfg):
+    from pilot.oc import OpenCode
+
+    client = OpenCode(cfg.service_url, cfg.service_password_file, cfg.provider_id, cfg.model_id)
+    ok, detail = client.preflight()
+
+    assert ok, detail
+    assert "OpenCode" in detail
+
+
+def test_preflight_hlasi_kdyz_sluzba_nebezi(cfg):
+    from pilot.oc import OpenCode
+
+    client = OpenCode("http://127.0.0.1:59999", cfg.service_password_file, "x", "y")
+    ok, detail = client.preflight()
+
+    assert not ok
+    assert "neběží" in detail
+
+
+def test_preflight_hlasi_chybejici_prihlaseni(tmp_path, cfg):
+    from pilot.oc import OpenCode
+
+    client = OpenCode(cfg.service_url, str(tmp_path / "nic.json"), "x", "y")
+    ok, detail = client.preflight()
+
+    assert not ok
+    assert "přihlášení" in detail
+
+
 @pytest.mark.slow
 def test_cely_kolo_od_otazky_k_odpovedi(cfg, monkeypatch):
     """Uživatelský scénář: řekne otázku, dostane odpověď o obrazovce."""

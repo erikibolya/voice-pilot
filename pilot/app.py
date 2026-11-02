@@ -36,7 +36,15 @@ class Pilot:
 
     def run(self) -> None:
         print(BANNER)
-        self._say("Pilot je připravený. Podrž nebo zmáčkni F9 a mluv.")
+
+        ok, detail = self.brain.client.preflight()
+        if not ok:
+            print("  !! " + detail.replace("\n", "\n  ") + "\n")
+            self._say("Nemůžu se spojit s OpenCode. Bez něj neumím myslet.")
+            raise SystemExit(1)
+        print(f"  mozek: {detail}")
+
+        self._say("Pilot je připravený. F9 začne nahrávat, druhá F9 nahrávku ukončí.")
 
         hotkey = self.cfg.hotkey if self.cfg.hotkey.startswith("<") else f"<{self.cfg.hotkey}>"
         print(f"  klávesa: {self.cfg.hotkey}   ukončení: Ctrl+C\n")
@@ -71,11 +79,13 @@ class Pilot:
 
     def _begin_recording(self) -> None:
         sd.stop()
+        _beep(880)
         self.mic.start()
         print("  ● poslouchám…  (znovu F9 ukončí nahrávku)", end="\r", flush=True)
 
     def _finish_recording(self) -> None:
         audio = self.mic.stop()
+        _beep(620)
         seconds = audio.size / self.cfg.sample_rate
         print(f"  ● nahráno {seconds:.1f} s, přepisuju…        ")
 
@@ -137,6 +147,16 @@ def listen_once(cfg) -> None:
     audio = mic.stop()
     print(f"  nahráno {audio.size / cfg.sample_rate:.1f} s, přepisuju…")
     print(f'  přepis: "{Transcriber(cfg).transcribe(audio)}"')
+
+
+def _beep(frequency: int = 800, duration_ms: int = 70) -> None:
+    """Krátká zvuková odezva — ať je poznat, kdy nahrávání začalo a skončilo."""
+    try:
+        import winsound
+
+        winsound.Beep(frequency, duration_ms)
+    except Exception:
+        pass
 
 
 def _configure_console() -> None:

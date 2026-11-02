@@ -60,6 +60,8 @@ class Transcriber:
 
         from faster_whisper import WhisperModel
 
+        print(f"  načítám Whisper {self.cfg.whisper_model}…", end=" ", flush=True)
+
         if self.cfg.whisper_device == "cuda":
             try:
                 _enable_cuda_dlls()
@@ -69,9 +71,11 @@ class Transcriber:
                     compute_type=self.cfg.whisper_compute,
                 )
                 self.device_used = "gpu"
+                print("běží na GPU")
                 return self._model
             except Exception as exc:
-                print(f"  (GPU nedostupná: {exc} — přepínám na CPU, bude to pomalejší)")
+                print(f"GPU nedostupná ({exc}) — přepínám na CPU, bude to pomalejší")
+                print("  načítám znovu na CPU…", end=" ", flush=True)
 
         self._model = WhisperModel(
             self.cfg.whisper_model,
@@ -79,6 +83,7 @@ class Transcriber:
             compute_type="int8",
         )
         self.device_used = "cpu"
+        print("běží na CPU")
         return self._model
 
     def transcribe(self, audio: np.ndarray) -> str:

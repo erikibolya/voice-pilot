@@ -37,9 +37,34 @@ class OpenCode:
         return ("opencode", self._password())
 
     def info(self) -> dict:
-        r = self._client.get(f"{self.url}/api/info", auth=self.auth())
+        r = self._client.get(f"{self.url}/api/info", auth=self.auth(), timeout=5.0)
         r.raise_for_status()
         return r.json()
+
+    def preflight(self) -> tuple[bool, str]:
+        """Ověří, že mozek vůbec existuje, a vrátí srozumitelný důvod, když ne."""
+        if not self.password_file.exists():
+            return False, (
+                f"Nenacházím přihlášení k OpenCode ({self.password_file}).\n"
+                "  Nainstaluj a spusť OpenCode, pak to zkus znovu."
+            )
+        try:
+            data = self.info()
+        except httpx.ConnectError:
+            return False, (
+                f"OpenCode na {self.url} neběží.\n"
+                "  Spusť desktopovou aplikaci OpenCode a nech ji otevřenou."
+            )
+        except httpx.HTTPStatusError as exc:
+            return False, (
+                f"OpenCode odmítl přihlášení (HTTP {exc.response.status_code}).\n"
+                f"  Zkontroluj heslo v {self.password_file}."
+            )
+        except Exception as exc:
+            return False, f"OpenCode neodpovídá: {exc}"
+
+        version = data.get("version", "?")
+        return True, f"OpenCode {version} běží na {self.url}"
 
     def generate(self, prompt: str) -> str:
         """Jednořázové volání modelu bez historie. Vrací prostý text."""
