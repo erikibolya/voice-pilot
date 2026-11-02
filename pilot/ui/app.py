@@ -76,6 +76,9 @@ def run(cfg) -> int:
     engine.mic.on_level = overlays.level
     bridge.event.connect(prekryvy)
 
+    # model hlasu se načte dřív, než ho bude potřeba
+    engine.speaker.prewarm()
+
     watcher = HotkeyWatcher(cfg.hotkey, keys.started.emit, keys.stopped.emit)
     started = watcher.start()
 
