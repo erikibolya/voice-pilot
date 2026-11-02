@@ -34,6 +34,20 @@ Rychlé (bez modelu a sítě): `.venv\Scripts\python.exe -m pytest -q -m "not sl
 | **Data pro výslovnost leží na ASCII cestě** | `test_espeak_data_lezi_na_ceste_bez_diakritiky` | regrese: `espeak-ng` je C knihovna |
 | Model odpoví česky | `test_model_odpovi_cesky` | OpenCode API |
 
+| Funkce | Test | Poznámka |
+|---|---|---|
+| Parsování kombinace | `test_parsovani_kombinace` | `ctrl+alt+space`, `F9` |
+| Prázdná kombinace selže | `test_prazdna_kombinace_selze` | |
+| **Samotné písmeno se nepovolí** | `test_samotne_pismeno_by_se_spoustelo_psanim` | spouštělo by se psaním |
+| Funkční a speciální klávesy projdou | `test_funkcni_a_specialni_klavesy_jsou_v_poradku` | `f9`, `space`, `ctrl+a` |
+| Popis pro rozhraní | `test_popis_pro_cteni` | `Ctrl+Alt+Space` |
+| **Držení spustí až po celé kombinaci** | `test_drzeni_spusti_az_po_cele_kombinaci` | push-to-talk |
+| Puštění ukončí | `test_pusteni_ukonci` | |
+| Puštění jiné klávesy neukončí | `test_pusteni_jine_klavesy_neukonci` | |
+| **Injektovaná klávesa se ignoruje** | `test_injektovana_klavesa_se_ignoruje` | cizí aplikace nespustí nahrávání |
+| Bez modifikátoru stačí jedna klávesa | `test_bez_modifikatoru_staci_jedna_klavesa` | `f9` |
+| Rychlé druhé stisknutí se potlačí | `test_rychle_druhe_stisknuti_se_potlaci` | |
+
 ## Milník 2 — akce
 
 | Funkce | Test | Poznámka |

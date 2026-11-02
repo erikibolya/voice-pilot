@@ -14,7 +14,10 @@ class Tray(QSystemTrayIcon):
         self.window = window
         self.engine = engine
 
-        self.setToolTip("voice-pilot — F9 pro mluvení")
+        from ..hotkey import popis
+
+        self._popis = popis(engine.cfg.hotkey)
+        self.setToolTip(f"voice-pilot — drž {self._popis} a mluv")
 
         menu = QMenu()
 
@@ -24,7 +27,7 @@ class Tray(QSystemTrayIcon):
 
         menu.addSeparator()
 
-        self.action_listen = QAction("Poslouchat (F9)", menu)
+        self.action_listen = QAction("Nahrát teď", menu)
         self.action_listen.triggered.connect(engine.toggle)
         menu.addAction(self.action_listen)
 
@@ -83,7 +86,7 @@ class Tray(QSystemTrayIcon):
             return
         state = payload.get("value")
         labels = {
-            "idle": "Připraven — F9 pro mluvení",
+            "idle": f"Připraven — drž {self._popis} a mluv",
             "listening": "Poslouchám…",
             "thinking": "Přemýšlím…",
             "speaking": "Mluvím…",
@@ -91,5 +94,5 @@ class Tray(QSystemTrayIcon):
         }
         self.setToolTip(f"voice-pilot — {labels.get(state, state)}")
         self.action_listen.setText(
-            "Ukončit nahrávání (F9)" if state == "listening" else "Poslouchat (F9)"
+            "Ukončit nahrávání" if state == "listening" else "Nahrát teď"
         )

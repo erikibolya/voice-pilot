@@ -206,6 +206,7 @@ class Engine:
                 "destructive": nebezpecna,
             }
         )
+        self._emit({"type": "control", "on": True})
         self._set_state(THINKING, "čekám na potvrzení")
 
         if nebezpecna:
@@ -254,6 +255,7 @@ class Engine:
             self._log(f"Hlas selhal: {exc}", "error")
 
     def _done(self) -> None:
+        self._emit({"type": "control", "on": False})
         self._busy = False
         self._set_state(IDLE)
 
