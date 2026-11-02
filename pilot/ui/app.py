@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 
 from ..engine import Engine
+from ..hotkey import HotkeyWatcher
 from .confirm import ConfirmBar, Confirmer
 from .icons import app_icon
+from .overlay import Overlays
 from .tray import Tray
 from .window import MainWindow
 
@@ -23,7 +25,8 @@ class EventBridge(QObject):
 class HotkeyBridge(QObject):
     """Přemostí globální klávesy z vlákna pynputu do hlavního vlákna Qt."""
 
-    pressed = Signal()
+    started = Signal()
+    stopped = Signal()
     confirm = Signal()
     cancel = Signal()
 
@@ -42,38 +45,61 @@ def run(cfg) -> int:
 
     window = MainWindow(cfg, engine)
     tray = Tray(window, engine)
+    overlays = Overlays()
+
     bridge.event.connect(window.receive)
     bridge.event.connect(tray.receive)
     tray.show()
 
     confirmer = Confirmer()
-    bar = ConfirmBar(confirmer)
+    bar = ConfirmBar(confirmer)  # noqa: F841 — drží se, dokud běží aplikace
     engine.confirmer = confirmer.ask
 
-    hotkey = HotkeyBridge()
-    hotkey.pressed.connect(engine.toggle)
-    hotkey.confirm.connect(lambda: confirmer.answer(True))
-    hotkey.cancel.connect(lambda: confirmer.answer(False))
-    listener = _start_hotkey(cfg.hotkey, hotkey)
+    # --- klávesa: drží se, po puštění se přestane nahrávat -----------------
+    keys = HotkeyBridge()
+
+    keys.started.connect(engine.start_listening)
+    keys.stopped.connect(engine.stop_listening)
+    keys.confirm.connect(lambda: confirmer.answer(True))
+    keys.cancel.connect(lambda: confirmer.answer(False))
+
+    def prekryvy(payload: dict) -> None:
+        """Překryvy se řídí stavem, ne vstupní cestou — platí i pro tlačítko."""
+        if payload.get("type") == "state":
+            if payload.get("value") == "listening":
+                overlays.begin_dictation()
+            else:
+                overlays.end_dictation()
+        elif payload.get("type") == "control":
+            overlays.show_control(bool(payload.get("on")))
+
+    engine.mic.on_level = overlays.level
+    bridge.event.connect(prekryvy)
+
+    watcher = HotkeyWatcher(cfg.hotkey, keys.started.emit, keys.stopped.emit)
+    started = watcher.start()
+
+    if started:
+        _start_confirm_hotkeys(keys)
+    else:
+        window.receive({"type": "log", "text": "Globální klávesu se nepodařilo zaregistrovat."})
 
     window.show()
 
     try:
         return app.exec()
     finally:
-        if listener is not None:
-            listener.stop()
+        watcher.stop()
         engine.shutdown()
 
 
-def _start_hotkey(hotkey: str, bridge: HotkeyBridge):
+def _start_confirm_hotkeys(bridge: HotkeyBridge):
+    """Potvrzení a zrušení akce — samostatné, vždycky aktivní."""
     from pynput import keyboard
 
-    combo = hotkey if hotkey.startswith("<") else f"<{hotkey}>"
     try:
         listener = keyboard.GlobalHotKeys(
             {
-                combo: bridge.pressed.emit,
                 "<ctrl>+<alt>+enter": bridge.confirm.emit,
                 "<ctrl>+<alt>+esc": bridge.cancel.emit,
             }

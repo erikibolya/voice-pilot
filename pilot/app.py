@@ -5,9 +5,8 @@ from __future__ import annotations
 import sys
 import time
 
-from pynput import keyboard
-
 from .engine import Engine
+from .hotkey import HotkeyWatcher
 from .stt import Mic, Transcriber
 from .tts import TTSError
 
@@ -88,14 +87,15 @@ class Pilot:
             raise SystemExit(1)
         print(f"  mozek: {detail}")
 
-        self._say("Pilot je připravený. F9 začne nahrávat, druhá F9 nahrávku ukončí.")
+        self._say("Pilot je připravený. Drž klávesu, mluv, a až domluvíš, pusť ji.")
 
-        hotkey = self.cfg.hotkey
-        combo = hotkey if hotkey.startswith("<") else f"<{hotkey}>"
-        print(f"  klávesa: {hotkey}   ukončení: Ctrl+C\n")
+        print(f"  klávesa: {self.cfg.hotkey} (držet)   ukončení: Ctrl+C\n")
 
-        listener = keyboard.GlobalHotKeys({combo: self.engine.toggle})
-        listener.start()
+        watcher = HotkeyWatcher(
+            self.cfg.hotkey, self.engine.start_listening, self.engine.stop_listening
+        )
+        if not watcher.start():
+            print("  !! globální klávesu se nepodařilo zaregistrovat\n")
 
         try:
             while True:
@@ -103,7 +103,7 @@ class Pilot:
         except KeyboardInterrupt:
             pass
         finally:
-            listener.stop()
+            watcher.stop()
             self.engine.shutdown()
             print("\n  takhle někdy příště.")
 

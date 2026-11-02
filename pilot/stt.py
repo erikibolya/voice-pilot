@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 
@@ -17,6 +18,8 @@ class Mic:
         self.device = device
         self._stream: sd.InputStream | None = None
         self._chunks: list[np.ndarray] = []
+        self.on_level: Callable[[float], None] | None = None
+        self._posledni_uroven = 0.0
 
     def start(self) -> None:
         self._chunks = []
@@ -31,6 +34,19 @@ class Mic:
 
     def _callback(self, indata, frames, time_info, status) -> None:  # noqa: ARG002
         self._chunks.append(indata.copy())
+
+        if self.on_level is None:
+            return
+
+        # úroveň pro animaci — nejvýš 20× za sekundu, ať to kmitá plynule
+        uroven = float(np.sqrt(np.mean(indata**2)) * 6.0)
+        uroven = min(1.0, uroven)
+        if abs(uroven - self._posledni_uroven) > 0.02:
+            self._posledni_uroven = uroven
+            try:
+                self.on_level(uroven)
+            except Exception:
+                pass
 
     def stop(self) -> np.ndarray:
         if self._stream is not None:

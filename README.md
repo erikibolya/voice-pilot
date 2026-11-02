@@ -68,12 +68,19 @@ Aplikace běží v okně i v systémové liště.
 
 | | |
 |---|---|
-| **F9** | začne nahrávat; druhá F9 nahrávku ukončí a odpoví |
-| **klik na mikrofon** | totéž co F9 |
+| **drž klávesu** | nahrává, dokud držíš; puštěním odešleš |
+| **klik na mikrofon** | totéž (klikni pro start, klikni pro stop) |
 | **psaný dotaz** | napiš do pole dole a zmáčkni Enter |
 | **zavření okna** | skryje do lišty, aplikace běží dál |
 | **dvojklik na ikonu** | vrátí okno |
 | **Ukončit v liště** | skutečné ukončení |
+
+Výchozí klávesa je **F9**, ale dá se změnit v nastavení — klikni na tlačítko
+a stiskni, co chceš. Samotné písmeno se nepovolí (spouštělo by se psaním);
+povolená je funkční klávesa, speciální klávesa, nebo kombinace s modifikátorem.
+
+Dokud držíš klávesu, **dole uprostřed obrazovky pulzuje pruh** s nápisem
+DIKTUJI — je vidět, že mikrofon poslouchá, i když se nedíváš do okna.
 
 Pípnutí označuje začátek a konec nahrávání, takže se nemusíš dívat do okna.
 
@@ -93,6 +100,10 @@ Každá akce se nejdřív nahlas ohlásí a čeká na potvrzení:
 
 Nevratné akce (smazat, odeslat, zaplatit, odinstalovat) dostanou varování
 navíc a jiné tlačítko. Když do 45 sekund nikdo neodpoví, platí „ne“.
+
+Když se chystám něco provést, **rozsvítí se rám kolem všech obrazovek**
+s nápisem PILOT OVLÁDÁ POČÍTAČ. Je vidět, že počítač zrovna není jen tvůj —
+stejná myšlenka jako u Claude, když přebírá kontrolu.
 
 Když prvek neumí UI Automation kliknout a musí se klikat na souřadnice,
 ověří se nejdřív, že je pořád na stejném místě. Když se posunul, nic se
