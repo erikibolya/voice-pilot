@@ -94,6 +94,23 @@ class Snapshot:
                 return e
         return None
 
+    def find_like(self, element: Element, tolerance: int = 8) -> Element | None:
+        """Najde stejný prvek v novém snímku — podle názvu a místa.
+
+        Indexy se mezi snímky posunou, ale jméno a poloha zůstávají.
+        """
+        for kandidat in self.elements:
+            if kandidat.kind != element.kind or kandidat.name != element.name:
+                continue
+            if (
+                abs(kandidat.x - element.x) <= tolerance
+                and abs(kandidat.y - element.y) <= tolerance
+                and abs(kandidat.w - element.w) <= tolerance
+                and abs(kandidat.h - element.h) <= tolerance
+            ):
+                return kandidat
+        return None
+
 
 def _short(text: str, limit: int) -> str:
     text = " ".join(text.split())

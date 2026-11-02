@@ -681,3 +681,100 @@ def test_snapshot_funguje_i_z_vedlejsiho_vlakna(cfg):
 
     assert vysledek.get("okno"), "ve vlákně se nepřečetlo aktivní okno"
     assert vysledek.get("prvku", 0) > 0, "ve vlákně se nepřečetly žádné prvky"
+
+
+def test_pred_provedenim_se_precte_cerstvy_snimek(cfg, monkeypatch):
+    """Regrese: COM objekty z jiného vlákna už neplatí (RPC_E_DISCONNECTED).
+
+    Před provedením akce se musí obrazovka přečíst znovu, v tom vlákně,
+    které bude klikat.
+    """
+    from pilot import actions as act
+    from pilot.brain import Reply
+    from pilot.actions import Action, Plan
+    from pilot.engine import Engine
+
+    volani = {"snapshot": 0, "execute": 0}
+
+    def falesny_snapshot(c):
+        volani["snapshot"] += 1
+        return _snap_pro_akce()
+
+    monkeypatch.setattr("pilot.engine.eyes.snapshot", falesny_snapshot)
+    monkeypatch.setattr(act, "execute", lambda a, s: volani.__setitem__("execute", volani["execute"] + 1) or "ok")
+
+    engine = Engine(cfg, on_event=lambda e: None)
+    monkeypatch.setattr(engine.speaker, "say", lambda t: None)
+    monkeypatch.setattr(
+        engine.brain,
+        "look_and_answer",
+        lambda t, s: Reply(say="Hotovo.", plan=Plan(say="Hotovo.", actions=[Action(type="click", target=1)])),
+    )
+    engine.confirmer = lambda p, d: False
+
+    engine.ask("klikni", background=False)
+
+    assert volani["execute"] == 1
+    assert volani["snapshot"] >= 2, "před kliknutím musí být nový snímek"
+
+
+def test_hledani_stejneho_prvku_v_novem_snimku():
+    from pilot.eyes import Element, Snapshot
+
+    stary = _snap_pro_akce()
+    novy = Snapshot(
+        active_title=stary.active_title,
+        active_class=stary.active_class,
+        elements=[
+            Element(index=9, kind="tlačítko", name="Přejmenovat", x=10, y=10, w=40, h=20),
+            Element(index=10, kind="tlačítko", name="Smazat", x=60, y=10, w=40, h=20),
+        ],
+    )
+
+    nalezeny = novy.find_like(stary.by_index(1))
+    assert nalezeny is not None
+    assert nalezeny.index == 9, "index se změnil, prvek ne"
+
+    assert novy.find_like(stary.by_index(2)).index == 10
+
+
+def test_piper_nezapisuje_kazdou_vetu_do_stejneho_souboru(cfg, tmp_path, monkeypatch):
+    """Regrese: druhá věta přepsala první dřív, než se stihla přečíst.
+
+    Přehrávač pak dostal prázdný soubor a hlas mlčel.
+    """
+    from dataclasses import replace
+
+    from pilot import tts
+
+    class FalesnyHlas:
+        def synthesize_wav(self, text, wf) -> None:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(22050)
+            wf.writeframes(b"\x00\x00" * 4000)
+
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"x")
+
+    monkeypatch.setattr(tts, "_piper_voice", lambda m: FalesnyHlas())
+
+    nastaveni = replace(cfg, tts_engine="piper", piper_model=str(model))
+    reci = tts.Speaker(nastaveni)
+
+    prvni = reci._piper("První věta.", 0)
+    druha = reci._piper("Druhá věta.", 1)
+
+    assert prvni != druha, "každá část musí mít vlastní soubor"
+    assert prvni.stat().st_size > 2000
+    assert druha.stat().st_size > 2000
+
+
+def test_prazdny_zvukovy_soubor_da_srozumitelnou_chybu(cfg, tmp_path):
+    from pilot.tts import Speaker, TTSError
+
+    prazdny = tmp_path / "nic.wav"
+    prazdny.write_bytes(b"")
+
+    with pytest.raises(TTSError, match="prázdný"):
+        Speaker(cfg)._decode(prazdny)
