@@ -77,6 +77,27 @@ Aplikace běží v okně i v systémové liště.
 
 Pípnutí označuje začátek a konec nahrávání, takže se nemusíš dívat do okna.
 
+## Odezva
+
+Naměřeno na RTX 3070, `python bench.py`:
+
+| Krok | Čas |
+|---|---|
+| Přepis 5 s řeči na GPU | 1,1 s |
+| Čtení obrazovky | 0,9 s — běží **souběžně** s přepisem |
+| Model | 1,4 s |
+| Hlas do prvního zvuku | 1,6 s — zbytek se vyrábí při mluvení |
+| **Celkem po domluvení** | **~4 s** |
+
+**Není to Python.** Práci dělají knihovny v C++ (CTranslate2 pro Whisper,
+UI Automation, miniaudio); Python je jen lepidlo mezi nimi, jeho vlastní režie
+je v jednotkách milisekund. Přepsat to do Rustu by ušetřilo zlomek sekundy.
+
+Kde čas opravdu je: ~0,9 s stojí navázání spojení s hlasovou službou
+Microsoftu (proto i jedno slovo trvá skoro sekundu), zbytek je model
+a samotné generování řeči. `beam_size` ani velikost promptu s tím nehnou —
+změřeno.
+
 ## Nastavení
 
 V okně přes ozubené kolo: klávesa, hlas, model a velikost modelu pro přepis.

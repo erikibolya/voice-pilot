@@ -121,11 +121,35 @@ class Engine:
 
     def _turn(self, audio) -> None:
         seconds = audio.size / self.cfg.sample_rate
+
+        # Čtení obrazovky a přepis na sobě nezávisí — běží vedle sebe.
+        # Ušetří to to, co by jinak trvalo dvakrát.
+        obrazovka: dict = {}
+
+        def nacti_obrazovku() -> None:
+            try:
+                snap = eyes.snapshot(self.cfg)
+                obrazovka["snap"] = snap
+                self._emit(
+                    {
+                        "type": "screen",
+                        "elements": len(snap.elements),
+                        "window": snap.active_title,
+                    }
+                )
+            except Exception as exc:
+                obrazovka["error"] = exc
+
+        vlakno = threading.Thread(target=nacti_obrazovku, daemon=True)
+        vlakno.start()
+
         try:
             text = self.transcriber.transcribe(audio)
         except Exception as exc:
             self._fail(f"Přepis selhal: {exc}")
             return
+
+        vlakno.join(timeout=self.cfg.ui_budget_seconds + 2)
 
         if not text:
             self._log("Nic jsem neslyšel.", "warn")
@@ -134,19 +158,20 @@ class Engine:
             return
 
         self._emit({"type": "heard", "text": text, "seconds": round(seconds, 1)})
-        self._answer(text)
+        self._answer(text, obrazovka.get("snap"))
 
-    def _answer(self, text: str) -> None:
+    def _answer(self, text: str, snap=None) -> None:
         self._busy = True
         try:
-            snap = eyes.snapshot(self.cfg)
-            self._emit(
-                {
-                    "type": "screen",
-                    "elements": len(snap.elements),
-                    "window": snap.active_title,
-                }
-            )
+            if snap is None:
+                snap = eyes.snapshot(self.cfg)
+                self._emit(
+                    {
+                        "type": "screen",
+                        "elements": len(snap.elements),
+                        "window": snap.active_title,
+                    }
+                )
             reply = self.brain.look_and_answer(text, snap)
         except Exception as exc:
             self._fail(f"Model neodpověděl: {exc}")
