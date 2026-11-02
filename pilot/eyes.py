@@ -1,0 +1,273 @@
+"""Oči: co je na obrazovce, přečtené přes Windows UI Automation.
+
+Proč zrovna takhle a ne jen ze screenshotu:
+  * model dostane přesné názvy tlačítek a souřadnice, nemusí hádat z pixelů,
+  * čeština projde bez OCR,
+  * a hlavně - každý prvek má číslo, takže později stačí říct "klikni na [7]"
+    a nemůže kliknout na něco, co jsme mu neukázali.
+"""
+
+from __future__ import annotations
+
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import uiautomation as auto
+
+ROOT = Path(__file__).resolve().parent.parent
+SHOTS = ROOT / "shots"
+
+# ControlTypeName -> krátký a srozumitelný název pro model
+FRIENDLY = {
+    "ButtonControl": "tlačítko",
+    "EditControl": "pole",
+    "TextControl": "text",
+    "MenuItemControl": "položka menu",
+    "ListItemControl": "položka seznamu",
+    "TreeItemControl": "položka stromu",
+    "TabItemControl": "karta",
+    "DocumentControl": "dokument",
+    "HyperlinkControl": "odkaz",
+    "ComboBoxControl": "výběrový seznam",
+    "CheckBoxControl": "zaškrtávátko",
+    "RadioButtonControl": "přepínač",
+    "SliderControl": "posuvník",
+    "PaneControl": "panel",
+    "WindowControl": "okno",
+    "GroupControl": "skupina",
+    "DataItemControl": "položka",
+    "ImageControl": "obrázek",
+}
+
+
+@dataclass
+class Element:
+    index: int
+    kind: str
+    name: str
+    x: int
+    y: int
+    w: int
+    h: int
+
+    @property
+    def center(self) -> tuple[int, int]:
+        return (self.x + self.w // 2, self.y + self.h // 2)
+
+
+@dataclass
+class Snapshot:
+    active_title: str = ""
+    active_class: str = ""
+    windows: list[dict] = field(default_factory=list)
+    elements: list[Element] = field(default_factory=list)
+
+    def render(self) -> str:
+        lines: list[str] = []
+        lines.append(f'AKTIVNÍ OKNO: "{self.active_title}" ({self.active_class})')
+
+        if self.windows:
+            others = [w for w in self.windows if w["title"] != self.active_title]
+            if others:
+                lines.append("DALŠÍ OTEVŘENÁ OKNA:")
+                for w in others[:14]:
+                    lines.append(f'  - "{_short(w["title"], 60)}"')
+
+        if self.elements:
+            lines.append("PRVKY V AKTIVNÍM OKNĚ (klikat lze jen na tato čísla):")
+            for e in self.elements:
+                lines.append(
+                    f'  [{e.index}] {e.kind} "{_short(e.name, 70)}" @ ({e.x}, {e.y}) {e.w}x{e.h}'
+                )
+        else:
+            lines.append("PRVKY: nepodařilo se přečíst (okno možná nepodporuje přístupnost)")
+
+        return "\n".join(lines)
+
+    def by_index(self, index: int) -> Element | None:
+        for e in self.elements:
+            if e.index == index:
+                return e
+        return None
+
+
+def _short(text: str, limit: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _visible(ctrl) -> bool:
+    try:
+        r = ctrl.BoundingRectangle
+        return (r.right - r.left) > 2 and (r.bottom - r.top) > 2
+    except Exception:
+        return False
+
+
+def list_windows() -> list[dict]:
+    result: list[dict] = []
+    try:
+        root = auto.GetRootControl()
+        for w in root.GetChildren():
+            try:
+                title = w.Name
+                if not title:
+                    continue
+                r = w.BoundingRectangle
+                result.append(
+                    {
+                        "title": title,
+                        "class": w.ClassName,
+                        "x": r.left,
+                        "y": r.top,
+                        "w": r.right - r.left,
+                        "h": r.bottom - r.top,
+                    }
+                )
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return result
+
+
+def _renderer_roots(hwnd: int) -> list:
+    """Chrome drží obsah stránky ve zvláštním podřízeném HWND.
+
+    Běžné GetChildren() se přes něj nedostane, takže ho musíme přidat zvlášť -
+    jinak z prohlížeče vidíme jen panel nástrojů a stránku ne.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    roots: list = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def callback(child, _lparam):  # noqa: ANN001
+        cls = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(child, cls, 256)
+        if "RenderWidgetHost" in cls.value:
+            try:
+                roots.append(auto.ControlFromHandle(child))
+            except Exception:
+                pass
+        return True
+
+    try:
+        user32.EnumChildWindows(hwnd, callback, 0)
+    except Exception:
+        pass
+    return roots
+
+
+def _collect(roots: list, cfg, deadline: float) -> list[Element]:
+    """Projde stromy oken do šířky, aby se stihla vrchní úroveň."""
+    out: list[Element] = []
+    seen: set[tuple] = set()
+    queue: list[tuple[object, int]] = [(root, 0) for root in roots]
+    cursor = 0
+
+    while cursor < len(queue) and len(out) < cfg.max_elements:
+        if time.monotonic() > deadline:
+            break
+        node, depth = queue[cursor]
+        cursor += 1
+
+        try:
+            children = node.GetChildren()
+        except Exception:
+            children = []
+
+        for child in children:
+            if depth < cfg.max_depth:
+                queue.append((child, depth + 1))
+
+            try:
+                raw_name = child.Name
+            except Exception:
+                continue
+            name = " ".join(raw_name.split()) if raw_name else ""
+            if not name or not _visible(child):
+                continue
+
+            r = child.BoundingRectangle
+            kind = FRIENDLY.get(child.ControlTypeName, child.ControlTypeName)
+            key = (kind, name, r.left, r.top, r.right - r.left, r.bottom - r.top)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            out.append(
+                Element(
+                    index=len(out) + 1,
+                    kind=kind,
+                    name=name,
+                    x=r.left,
+                    y=r.top,
+                    w=r.right - r.left,
+                    h=r.bottom - r.top,
+                )
+            )
+            if len(out) >= cfg.max_elements:
+                break
+
+    return out
+
+
+def snapshot(cfg) -> Snapshot:
+    snap = Snapshot()
+
+    active = None
+    hwnd = 0
+    try:
+        import ctypes
+
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        active = auto.ControlFromHandle(hwnd)
+    except Exception:
+        active = None
+
+    if active is not None:
+        try:
+            snap.active_title = active.Name or ""
+            snap.active_class = active.ClassName or ""
+        except Exception:
+            pass
+
+        roots: list = [active]
+        try:
+            roots.extend(_renderer_roots(hwnd))
+        except Exception:
+            pass
+
+        deadline = time.monotonic() + cfg.ui_budget_seconds
+        snap.elements = _collect(roots, cfg, deadline)
+
+    if cfg.include_all_windows:
+        snap.windows = list_windows()
+
+    return snap
+
+
+def screenshot(name: str = "screen") -> Path:
+    import mss
+
+    SHOTS.mkdir(parents=True, exist_ok=True)
+    path = SHOTS / f"{name}.png"
+    factory = getattr(mss, "MSS", None) or mss.mss
+    with factory() as sct:
+        shot = sct.grab(sct.monitors[0])
+        mss.tools.to_png(shot.rgb, shot.size, output=str(path))
+    return path
+
+
+if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")
+    from .config import load
+
+    s = snapshot(load())
+    print(s.render())
+    print("\nscreenshot:", screenshot())
