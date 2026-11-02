@@ -107,20 +107,26 @@ def test_edge_vyrobi_zvuk(cfg):
     assert path.stat().st_size > 1000
 
 
-def test_prehravac_zvlada_cestu_s_diakritikou(cfg):
-    """Regrese: C knihovny na Windows neumí cestu s českou diakritikou."""
+def test_prehravac_zvlada_cestu_s_diakritikou(cfg, tmp_path):
+    """Regrese: C knihovny na Windows neumí cestu s českou diakritikou.
+
+    Dřív se zvuk dekódoval přes `miniaudio.decode_file(cesta)`, což na cestě
+    typu „Výchozí projekt“ spadlo. Soubor se teď čte po bajtech.
+    """
     from pilot.tts import Speaker
 
-    speaker = Speaker(cfg)
-    path = speaker._edge("Test.")
-    assert any(ord(ch) > 127 for ch in str(path)), "test má smysl jen na cestě s diakritikou"
+    vzorek = Path(__file__).parent / "data" / "sample.mp3"
+    assert vzorek.exists(), "chybí testovací nahrávka"
 
-    decoded = miniaudio.decode(
-        path.read_bytes(),
-        output_format=miniaudio.SampleFormat.SIGNED16,
-        nchannels=1,
-    )
-    assert len(decoded.samples) > 0
+    ceska_slozka = tmp_path / "Výchozí projekt" / "cache" / "tts"
+    ceska_slozka.mkdir(parents=True)
+    cil = ceska_slozka / "řeč.mp3"
+    cil.write_bytes(vzorek.read_bytes())
+
+    audio, rate = Speaker(cfg)._decode(cil)
+
+    assert audio.size > 1000, "ze souboru se nedostal žádný zvuk"
+    assert rate > 0
 
 
 # -------------------------------------------------------------------- uši
@@ -221,10 +227,14 @@ def test_preflight_najde_bezici_opencode(cfg):
     assert "OpenCode" in detail
 
 
-def test_preflight_hlasi_kdyz_sluzba_nebezi(cfg):
+def test_preflight_hlasi_kdyz_sluzba_nebezi(tmp_path):
+    """Přihlášení existuje, ale služba na daném portu neběží."""
     from pilot.oc import OpenCode
 
-    client = OpenCode("http://127.0.0.1:59999", cfg.service_password_file, "x", "y")
+    prihlaseni = tmp_path / "service.json"
+    prihlaseni.write_text('{"password": "test"}', encoding="utf-8")
+
+    client = OpenCode("http://127.0.0.1:59999", str(prihlaseni), "x", "y")
     ok, detail = client.preflight()
 
     assert not ok

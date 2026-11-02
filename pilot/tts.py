@@ -97,9 +97,13 @@ class Speaker:
 
     # ---------- přehrání ----------
 
-    def _play(self, path: Path) -> None:
-        # Soubor čteme po bajtech, ne cestou: knihovny psané v C na Windows
-        # nezvládnou cestu s českou diakritikou (project je "Výchozí projekt").
+    def _decode(self, path: Path) -> tuple[np.ndarray, int]:
+        """Přečte soubor na zvuk. Cesta se nikdy nepředává nativní knihovně.
+
+        Knihovny psané v C na Windows nezvládnou cestu s českou diakritikou
+        (projekt může být ve složce „Výchozí projekt“), takže se soubor
+        načte po bajtech a dekóduje z paměti.
+        """
         raw = path.read_bytes()
 
         if path.suffix.lower() == ".wav":
@@ -109,17 +113,19 @@ class Speaker:
             with wave.open(io.BytesIO(raw), "rb") as wf:
                 rate = wf.getframerate()
                 audio = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
-        else:
-            import miniaudio
+            return audio, rate
 
-            decoded = miniaudio.decode(
-                raw,
-                output_format=miniaudio.SampleFormat.SIGNED16,
-                nchannels=1,
-            )
-            rate = decoded.sample_rate
-            audio = np.frombuffer(decoded.samples, dtype=np.int16)
+        import miniaudio
 
+        decoded = miniaudio.decode(
+            raw,
+            output_format=miniaudio.SampleFormat.SIGNED16,
+            nchannels=1,
+        )
+        return np.frombuffer(decoded.samples, dtype=np.int16), decoded.sample_rate
+
+    def _play(self, path: Path) -> None:
+        audio, rate = self._decode(path)
         sd.play(audio, rate)
         sd.wait()
 
