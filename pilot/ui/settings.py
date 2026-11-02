@@ -167,6 +167,8 @@ class SettingsDialog(QDialog):
         self._select(self.engine, cfg.tts_engine)
         form.addRow("Řeč", self.engine)
 
+        self.engine.currentIndexChanged.connect(self._podle_enginu)
+
         self.model = QComboBox()
         for label, value in MODELS:
             self.model.addItem(label, value)
@@ -181,13 +183,12 @@ class SettingsDialog(QDialog):
 
         layout.addLayout(form)
 
-        note = QLabel(
-            "Klávesa se drží, dokud mluvíš. Změny se projeví po restartu "
-            "aplikace. Během nahrávání je nechte být."
-        )
+        note = QLabel("")
         note.setObjectName("Muted")
         note.setWordWrap(True)
         layout.addWidget(note)
+        self.note = note
+        self._podle_enginu()
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -195,6 +196,25 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _podle_enginu(self) -> None:
+        """Hlas jde vybrat jen u edge-tts; Piper má jediný český hlas.
+
+        Dřív šlo přepnout hlas i u Piperu, ale nic to nedělalo — a vypadalo
+        to jako rozbitá aplikace.
+        """
+        piper = self.engine.currentData() == "piper"
+        self.voice.setEnabled(not piper)
+        if piper:
+            self.note.setText(
+                "Piper má pro češtinu jediný hlas — jirka, mužský. "
+                "Ženský hlas nabízí jen edge-tts."
+            )
+        else:
+            self.note.setText(
+                "Klávesa se drží, dokud mluvíš. Změny se projeví po restartu "
+                "aplikace. Během nahrávání je nechte být."
+            )
 
     @staticmethod
     def _select(combo: QComboBox, value: str) -> None:
