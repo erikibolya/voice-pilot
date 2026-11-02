@@ -778,3 +778,31 @@ def test_prazdny_zvukovy_soubor_da_srozumitelnou_chybu(cfg, tmp_path):
 
     with pytest.raises(TTSError, match="prázdný"):
         Speaker(cfg)._decode(prazdny)
+
+
+def test_hlas_jde_menit_jen_u_edge(cfg, monkeypatch):
+    """Regrese: u Piperu šlo přepnout hlas, ale nic to nedělalo.
+
+    Piper má pro češtinu jediný hlas (jirka, mužský) — přepínač proto
+    musí být nedostupný, ne tiše ignorovaný.
+    """
+    from dataclasses import replace
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from pilot.ui.settings import SettingsDialog
+
+    app = _qt()
+    dialog = SettingsDialog(replace(cfg, tts_engine="piper"))
+
+    try:
+        assert not dialog.voice.isEnabled(), "u Piperu nemá jít hlas měnit"
+        assert "Piper" in dialog.note.text()
+
+        index = dialog.engine.findData("edge")
+        dialog.engine.setCurrentIndex(index)
+
+        assert dialog.voice.isEnabled(), "u edge-tts hlas měnit jde"
+    finally:
+        dialog.close()
+        app.processEvents()
