@@ -269,6 +269,12 @@ class MainWindow(QMainWindow):
         self.status_rest = QLabel("")
         layout.addWidget(self.status_rest)
 
+        self.stop_hint = QLabel("")
+        self.stop_hint.setStyleSheet(
+            "color: #e11d48; font-weight: 600;"
+        )
+        layout.addWidget(self.stop_hint)
+
         layout.addStretch(1)
 
         self.update_button = QPushButton("Aktualizovat")
@@ -338,6 +344,11 @@ class MainWindow(QMainWindow):
                 vysledky = payload.get("results", [])
                 self.plan_label.setText("Hotovo: " + "; ".join(vysledky))
                 self._log(f"Provedeno {len(vysledky)} akcí.")
+
+        elif kind == "control":
+            self.stop_hint.setText(
+                "AI pracuje — Ctrl+Alt+Esc přeruší" if payload.get("on") else ""
+            )
 
         elif kind == "log":
             self._log(payload["text"])

@@ -1390,3 +1390,30 @@ def test_vision_prompt_zakazuje_uvažování(cfg):
 
     assert "POUZE JSON" in vyzva
     assert "uvažování" in vyzva
+
+
+def test_vision_nezopakuje_stejny_krok(cfg, monkeypatch):
+    """Regrese: model napsal „ahoj" šestkrát, protože obrazovka se neměnila."""
+    from pilot import actions as act
+    from pilot import vision
+    from pilot.engine import Engine
+
+    obraz = vision.Snimek(data=b"", sirka=1920, vyska=1080, offset_x=0, offset_y=0, scale=1.0)
+    monkeypatch.setattr(vision, "snimek", lambda: obraz)
+
+    stejna = '{"say": "", "actions": [{"type": "type", "x": 600, "y": 350, "text": "ahoj"}], "done": false}'
+
+    class FalesnyCitac:
+        def zeptej_se(self, vyzva, obraz, timeout=40.0):
+            return stejna
+
+    provedeno = []
+    monkeypatch.setattr(act, "execute", lambda a, s: provedeno.append(a.text) or "napsáno")
+
+    engine = Engine(replace(cfg, use_vision=True), on_event=lambda e: None)
+    engine.speaker.say = lambda t: None
+    monkeypatch.setattr(engine, "_citac", lambda: FalesnyCitac())
+
+    engine.ask("napiš ahoj", background=False)
+
+    assert len(provedeno) == 1, f"napsalo se {len(provedeno)}x: {provedeno}"

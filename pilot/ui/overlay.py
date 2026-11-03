@@ -262,8 +262,14 @@ class ControlFrame(QWidget):
 
         metr = painter.fontMetrics()
         textova = metr.horizontalAdvance(text)
-        chip_w = textova + 62
-        chip_h = 38
+
+        hint_text = "Přerušit: Ctrl+Alt+Esc"
+        hint_font = QFont(c["font"], 8)
+        painter.setFont(hint_font)
+        hint_sirka = painter.fontMetrics().horizontalAdvance(hint_text)
+
+        chip_w = max(textova + 62, hint_sirka + 56)
+        chip_h = 56
         cx = sirka / 2
         cy = vyska * 0.42
         chip = QRectF(cx - chip_w / 2, cy - chip_h / 2, chip_w, chip_h)
@@ -274,10 +280,10 @@ class ControlFrame(QWidget):
         ram = QColor(barva)
         ram.setAlphaF(0.9)
         painter.setPen(QPen(ram, 1))
-        painter.drawRoundedRect(chip, chip_h / 2, chip_h / 2)
+        painter.drawRoundedRect(chip, 16, 16)
 
-        # pulzující tečka
-        stred = QPointF(chip.left() + 23, chip.center().y())
+        # pulzující tečka u hlavního textu
+        stred = QPointF(chip.left() + 23, chip.top() + 20)
         halo = QColor(barva)
         halo.setAlphaF(0.22 + 0.28 * pulz)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -289,23 +295,23 @@ class ControlFrame(QWidget):
         painter.setBrush(plna)
         painter.drawEllipse(stred, 4.5, 4.5)
 
+        painter.setFont(font)
         painter.setPen(QColor(c["text"]))
         painter.drawText(
-            QRectF(chip.left() + 40, chip.top(), chip_w - 48, chip_h),
+            QRectF(chip.left() + 40, chip.top() + 8, chip_w - 48, 24),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             text,
         )
 
-        # nápověda, jak to přerušit
-        hint_font = QFont(c["font"], 8)
+        # nápověda JE UVNITŘ chipu — na světlé stránce by šedý text na ploše zmizel
         painter.setFont(hint_font)
         hinta = QColor(c["muted"])
-        hinta.setAlphaF(0.0 + 0.85 * (0.6 + 0.4 * pulz))
+        hinta.setAlphaF(0.95)
         painter.setPen(hinta)
         painter.drawText(
-            QRectF(cx - 200, chip.bottom() + 6, 400, 18),
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-            "Přerušit: Ctrl+Alt+Esc",
+            QRectF(chip.left() + 40, chip.top() + 31, chip_w - 48, 18),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            hint_text,
         )
 
         painter.end()
