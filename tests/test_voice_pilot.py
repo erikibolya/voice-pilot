@@ -1081,3 +1081,107 @@ def test_abort_zhasne_prekryv_kdyz_nic_nebezi(cfg, monkeypatch):
     assert any(
         u.get("type") == "control" and u.get("on") is False for u in udalosti
     ), "přerušení má zhasnout překryv"
+
+
+# --------------------------------------------------------------------- web
+
+
+def test_render_oddeli_webovou_stranku():
+    from pilot.eyes import Element, Snapshot
+
+    snap = Snapshot(
+        active_title="Facebook",
+        active_class="Chrome_WidgetWin_1",
+        elements=[
+            Element(index=1, kind="tlačítko", name="Zpět", x=0, y=0, w=10, h=10),
+            Element(index=2, kind="panel", name="Panel", x=0, y=10, w=10, h=10),
+            Element(index=3, kind="button", name="Přehrát", x=400, y=300, w=40, h=40,
+                    source="cdp", cdp_index=7),
+        ],
+        web_from=3,
+    )
+
+    text = snap.render()
+
+    assert "PRVKY NA WEBOVÉ STRÁNCE" in text
+    assert "Přehrát" in text
+    web_cast = text.split("PRVKY NA WEBOVÉ STRÁNCE")[0]
+    assert "Přehrát" not in web_cast
+
+
+def test_webovy_prvek_se_klikne_pres_prohlizec(monkeypatch):
+    from pilot import actions, cdp
+    from pilot.eyes import Element, Snapshot
+
+    kliknuto = []
+
+    class FalesnaKarta:
+        def click(self, index, text):
+            kliknuto.append((index, text))
+            return "ok"
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(cdp, "first_page", lambda: FalesnaKarta())
+
+    snap = Snapshot(
+        elements=[
+            Element(index=1, kind="video", name="Přehrát video", x=0, y=0, w=10, h=10,
+                    source="cdp", cdp_index=4),
+        ]
+    )
+
+    vysledek = actions.execute(actions.Action(type="click", target=1), snap)
+
+    assert kliknuto == [(4, "Přehrát video")]
+    assert "Přehrát" in vysledek
+
+
+def test_webovy_prvek_se_pri_zmene_stranky_dohleda_podle_textu():
+    from pilot.eyes import Element, Snapshot
+
+    stary = Snapshot(
+        elements=[Element(index=1, kind="button", name="Přihlásit", x=10, y=10, w=5, h=5,
+                          source="cdp", cdp_index=2)]
+    )
+    novy = Snapshot(
+        elements=[Element(index=5, kind="button", name="Přihlásit", x=99, y=77, w=5, h=5,
+                          source="cdp", cdp_index=9)]
+    )
+
+    assert novy.find_by_name("Přihlásit", source="cdp").index == 5
+    assert novy.find_by_name("Přihlásit", source="uia") is None
+
+
+def test_bez_prohlizece_webova_akce_selze_srozumitelne(monkeypatch):
+    from pilot import actions, cdp
+    from pilot.eyes import Element, Snapshot
+
+    monkeypatch.setattr(cdp, "first_page", lambda: None)
+    snap = Snapshot(
+        elements=[Element(index=1, kind="button", name="X", x=0, y=0, w=5, h=5,
+                          source="cdp", cdp_index=0)]
+    )
+
+    with pytest.raises(actions.ActionError, match="prohlížeč"):
+        actions.execute(actions.Action(type="click", target=1), snap)
+
+
+def test_karta_se_vybere_podle_nazvu_okna(monkeypatch):
+    """Regrese: připojili jsme prvky z jiné karty, než bylo aktivní okno."""
+    from pilot import cdp
+
+    monkeypatch.setattr(
+        cdp,
+        "pages",
+        lambda: [
+            {"id": "karta-a", "title": "Facebook", "url": "https://facebook.com"},
+            {"id": "karta-b", "title": "Gmail", "url": "https://mail.google.com"},
+        ],
+    )
+    monkeypatch.setattr(cdp, "Tab", lambda tid: tid)
+
+    assert cdp.tab_for_window("Gmail - Google Chrome") == "karta-b"
+    assert cdp.tab_for_window("Facebook - Google Chrome") == "karta-a"
+    assert cdp.tab_for_window("Průzkumník - Google Chrome") is None

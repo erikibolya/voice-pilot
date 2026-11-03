@@ -53,6 +53,9 @@ class Element:
     h: int
     # živý ovládací prvek pro UI Automation; do textu pro model nepatří
     control: object | None = field(default=None, repr=False, compare=False)
+    # "uia" pro Windows, "cdp" pro prvek na webové stránce
+    source: str = "uia"
+    cdp_index: int | None = None
 
     @property
     def center(self) -> tuple[int, int]:
@@ -67,6 +70,8 @@ class Snapshot:
     elements: list[Element] = field(default_factory=list)
     # index prvního prvku panelu úloh; None když se nepřečetl
     taskbar_from: int | None = None
+    # index prvního prvku webové stránky (přes CDP); None když není
+    web_from: int | None = None
 
     def render(self) -> str:
         lines: list[str] = []
@@ -81,6 +86,9 @@ class Snapshot:
 
         okno = [e for e in self.elements if self.taskbar_from is None or e.index < self.taskbar_from]
         panel = [e for e in self.elements if self.taskbar_from is not None and e.index >= self.taskbar_from]
+        if self.web_from is not None:
+            okno = [e for e in okno if e.index < self.web_from]
+            panel = [e for e in panel if e.index < self.web_from]
 
         if okno:
             lines.append("PRVKY V AKTIVNÍM OKNĚ (klikat lze jen na tato čísla):")
@@ -98,12 +106,27 @@ class Snapshot:
                     f'  [{e.index}] {e.kind} "{_short(e.name, 70)}" @ ({e.x}, {e.y}) {e.w}x{e.h}'
                 )
 
+        if self.web_from is not None:
+            web = [e for e in self.elements if e.index >= self.web_from]
+            if web:
+                lines.append("PRVKY NA WEBOVÉ STRÁNCE (v prohlížeči):")
+                for e in web:
+                    lines.append(
+                        f'  [{e.index}] {e.kind} "{_short(e.name, 70)}" @ ({e.x}, {e.y}) {e.w}x{e.h}'
+                    )
+
         return "\n".join(lines)
 
     def by_index(self, index: int) -> Element | None:
         for e in self.elements:
             if e.index == index:
                 return e
+        return None
+
+    def find_by_name(self, name: str, source: str = "uia") -> Element | None:
+        for element in self.elements:
+            if element.source == source and element.name == name:
+                return element
         return None
 
     def find_like(self, element: Element, tolerance: int = 8) -> Element | None:
@@ -331,6 +354,38 @@ def _snapshot(cfg) -> Snapshot:
                     limit=cfg.max_taskbar_elements,
                 )
             )
+    except Exception:
+        pass
+
+    # Web: UI Automation z Chrome obsah nevydá, takže se ptáme prohlížeče
+    # přímo přes DevTools Protocol — jen když je Chrome vpředu a port běží.
+    try:
+        if "Chrome_WidgetWin_1" in snap.active_class:
+            from . import cdp
+
+            if cdp.available():
+                tab = cdp.tab_for_window(snap.active_title)
+                if tab is not None:
+                    try:
+                        prvky = tab.elements()[: cfg.max_web_elements]
+                    finally:
+                        tab.close()
+                    if prvky:
+                        snap.web_from = len(snap.elements) + 1
+                        for p in prvky:
+                            snap.elements.append(
+                                Element(
+                                    index=len(snap.elements) + 1,
+                                    kind=str(p.get("tag", "prvek")),
+                                    name=str(p.get("text", "")),
+                                    x=int(p.get("x", 0)),
+                                    y=int(p.get("y", 0)),
+                                    w=int(p.get("w", 0)),
+                                    h=int(p.get("h", 0)),
+                                    source="cdp",
+                                    cdp_index=int(p.get("i", 0)),
+                                )
+                            )
     except Exception:
         pass
 
