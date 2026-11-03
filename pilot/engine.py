@@ -205,84 +205,143 @@ class Engine:
             self._done()
             return
 
-        self._run_plan(plan, snap, reply.say)
+        self._run_plan(plan, snap, reply.say, text)
 
-    def _run_plan(self, plan, snap, say: str) -> None:
-        popis = actions.describe(plan, snap)
-        nebezpecna = actions.je_nebezpecny(plan, snap)
+    def _run_plan(self, plan, snap, say: str, cil_ukolu: str = "") -> None:
+        """Smyčka k cíli: proveď krok, podívej se znovu, rozhodni další.
 
-        self._emit(
-            {
-                "type": "plan",
-                "say": say,
-                "description": popis,
-                "destructive": nebezpecna,
-            }
-        )
+        Model nedostane celý plán dopředu — obrazovka se mezi kroky změní.
+        Po každém kroku se čte znovu a model rozhodne, co dál, dokud neřekne
+        "done" nebo nedojde rozpočet kroků.
+        """
+        cil_ukolu = cil_ukolu or say
+        provedene: list[str] = []
+        posledni_say = say
+        posledni_popis = ""
+        opakovani = 0
+
         self._emit({"type": "control", "on": True})
 
-        # Ptáme se jen u nevratných věcí. Běžné kliknutí proběhne rovnou,
-        # člověk dostane jen krátký výsledek — ne vyprávění po krocích.
-        if nebezpecna:
-            self._set_state(THINKING, "čekám na potvrzení")
-            self._speak(f"Pozor, tohle se nedá vzít zpět: {popis}. Potvrdit?")
-            try:
-                potvrzeno = bool(self.confirmer(popis, True))
-            except Exception as exc:
-                self._log(f"Potvrzení selhalo: {exc}", "error")
-                potvrzeno = False
-
-            if not potvrzeno:
-                self._emit({"type": "executed", "results": [], "cancelled": True})
-                self._speak("Zrušeno.")
-                self._done()
-                return
-
-        # Čerstvý snímek v TOMTO vlákně: COM objekty z vlákna, kde se četla
-        # obrazovka pro model, už nemusí existovat (RPC_E_DISCONNECTED).
-        cerstvy = None
-        try:
-            cerstvy = eyes.snapshot(self.cfg)
-        except Exception as exc:
-            self._log(f"Obrazovku už nejde přečíst: {exc}", "error")
-
-        vysledky: list[str] = []
-        for akce in plan.actions:
-            try:
-                cil = akce
-                if cerstvy is not None and akce.target is not None:
-                    puvodni = snap.by_index(akce.target)
-                    if puvodni is not None:
-                        novy = cerstvy.find_like(puvodni)
-                        if novy is None:
-                            raise actions.ActionError(
-                                f"„{puvodni.name}“ už na obrazovce není"
-                            )
-                        cil = Action(
-                            type=akce.type,
-                            target=novy.index,
-                            text=akce.text,
-                            keys=akce.keys,
-                            direction=akce.direction,
-                            amount=akce.amount,
-                        )
-
-                vysledky.append(actions.execute(cil, cerstvy or snap))
-                time.sleep(0.12)
-            except Exception as exc:
-                vysledky.append(f"chyba: {exc}")
+        for krok in range(1, self.cfg.max_steps + 1):
+            if not plan.actions:
                 break
 
-        vsechno = len(vysledky) == len(plan.actions)
-        self._emit(
-            {"type": "executed", "results": vysledky, "cancelled": False, "ok": vsechno}
-        )
+            popis = actions.describe(plan, snap)
+            nebezpecna = actions.je_nebezpecny(plan, snap)
 
-        if say:
-            self._speak(say)
-        elif not vsechno:
+            opakovani = opakovani + 1 if popis == posledni_popis else 0
+            if opakovani >= 2:
+                self._log("Stejný krok se opakuje, končím.", "warn")
+                break
+            posledni_popis = popis
+
+            self._emit(
+                {
+                    "type": "plan",
+                    "say": plan.say,
+                    "description": popis,
+                    "destructive": nebezpecna,
+                    "step": krok,
+                }
+            )
+
+            if nebezpecna:
+                self._set_state(THINKING, "čekám na potvrzení")
+                self._speak(f"Pozor, tohle se nedá vzít zpět: {popis}. Potvrdit?")
+                try:
+                    potvrzeno = bool(self.confirmer(popis, True))
+                except Exception as exc:
+                    self._log(f"Potvrzení selhalo: {exc}", "error")
+                    potvrzeno = False
+
+                if not potvrzeno:
+                    self._emit({"type": "executed", "results": [], "cancelled": True})
+                    self._speak("Zrušeno.")
+                    self._done()
+                    return
+
+            # Čerstvý snímek v TOMTO vlákně: COM objekty z vlákna, kde se
+            # četla obrazovka pro model, už nemusí existovat.
+            try:
+                cerstvy = eyes.snapshot(self.cfg)
+            except Exception as exc:
+                self._log(f"Obrazovku už nejde přečíst: {exc}", "error")
+                cerstvy = None
+
+            vysledky: list[str] = []
+            vsechno = True
+            for akce in plan.actions:
+                try:
+                    cil = self._premapuj(akce, snap, cerstvy)
+                    vysledek = actions.execute(cil, cerstvy or snap)
+                    vysledky.append(vysledek)
+                    provedene.append(vysledek)
+                    time.sleep(0.15)
+                except Exception as exc:
+                    vysledky.append(f"chyba: {exc}")
+                    vsechno = False
+                    break
+
+            if cerstvy is not None:
+                eyes.release(cerstvy)
+
+            self._emit(
+                {
+                    "type": "executed",
+                    "results": vysledky,
+                    "cancelled": False,
+                    "ok": vsechno,
+                }
+            )
+
+            if not vsechno or plan.done:
+                break
+            if krok >= self.cfg.max_steps:
+                self._log(f"Vyčerpán rozpočet {self.cfg.max_steps} kroků.", "warn")
+                break
+
+            # nový snímek a rozhodnutí, co dál
+            try:
+                snap = eyes.snapshot(self.cfg)
+                plan = self.brain.next_step(cil_ukolu, provedene, snap)
+            except Exception as exc:
+                self._log(f"Další krok se nepovedl: {exc}", "error")
+                break
+
+            if plan.error:
+                self._log(f"Plán neprošel: {plan.error}", "error")
+                break
+
+            posledni_say = plan.say or posledni_say
+            eyes.release(snap)
+
+        if posledni_say:
+            self._speak(posledni_say)
+        elif not provedene:
             self._speak("Nepovedlo se to.")
         self._done()
+
+    def _premapuj(self, akce, stary, novy):
+        """Přeloží číslo prvku ze starého snímku do nového (podle jména a místa)."""
+        if novy is None or akce.target is None:
+            return akce
+
+        puvodni = stary.by_index(akce.target)
+        if puvodni is None:
+            return akce
+
+        nalezeny = novy.find_like(puvodni)
+        if nalezeny is None:
+            raise actions.ActionError(f"„{puvodni.name}“ už na obrazovce není")
+
+        return Action(
+            type=akce.type,
+            target=nalezeny.index,
+            text=akce.text,
+            keys=akce.keys,
+            direction=akce.direction,
+            amount=akce.amount,
+        )
 
     def _speak(self, text: str) -> None:
         self._set_state(SPEAKING)

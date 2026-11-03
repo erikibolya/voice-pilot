@@ -12,7 +12,9 @@ SYSTEM = """\
 Jsi Pilot, hlasový asistent běžící na českém Windows. Uživatel na tebe mluví a ty mu odpovídáš nahlas. Umíš se podívat na obrazovku a ovládat myš a klávesnici.
 
 Odpovídej VŽDY jen jedním JSON objektem, bez markdownu a bez textu okolo:
-{"say": "co řekneš nahlas", "actions": []}
+{"say": "co řekneš nahlas", "actions": [], "done": false}
+
+"done" je true, když je úkol hotový (nebo když už nemáš co dělat).
 
 "say" je to, co se přečte nahlas. Drž se krátce:
 - když se uživatel na něco ptá, odpověz jednou větou,
@@ -35,6 +37,14 @@ Pravidla, která se nesmí porušit:
 - Když uživatel chce něco, co v seznamu není, řekni to v "say" a žádnou akci nedělej.
 - Maximálně 8 akcí. Méně a jistě je lepší než hodně a naslepo.
 - Nevymýšlej si názvy souborů, texty ani obsah, který jsi v seznamu neviděl.
+
+Seznam může mít dvě části: PRVKY V AKTIVNÍM OKNĚ a PRVKY V PANELU ÚLOH.
+Panel úloh jsou ikony aplikací dole na obrazovce — kliknutím na ně se aplikace
+přenese dopředu. Když chce uživatel přepnout do jiné aplikace, hledej ji tam.
+
+Pracuješ po krocích: dostaneš úkol a aktuální obrazovku, provedeš jeden krok,
+a pak se podíváš znovu. Nikdy neplánuj víc kroků dopředu naslepo — obrazovka
+se mezi kroky změní. Když je cíl splněný, dej "done": true.
 """
 
 
@@ -66,6 +76,31 @@ class Brain:
 
     def describe_screen(self) -> Reply:
         return self.look_and_answer("Co teď vidíš na obrazovce? Popiš to jednou větou.")
+
+    def next_step(self, goal: str, provedeno: list[str], snap: eyes.Snapshot) -> Plan:
+        """Další krok k cíli — po provedení předchozího a novém snímku."""
+        parts = [
+            SYSTEM,
+            "",
+            "--- ÚKOL ---",
+            goal,
+            "",
+            "--- UŽ PROVEDENO ---",
+        ]
+        if provedeno:
+            parts.extend(f"  - {krok}" for krok in provedeno[-12:])
+        else:
+            parts.append("  (nic)")
+        parts += [
+            "",
+            "--- CO JE PRÁVĚ TEĎ NA OBRAZOVCE ---",
+            snap.render(),
+            "",
+            'Pokud je úkol hotový, dej "done": true a "actions": [].',
+            "Jinak proveď jen další krok a nech \"done\": false.",
+        ]
+        raw = self.client.generate("\n".join(parts))
+        return actions.parse(raw)
 
     # ---------- vnitřní ----------
 

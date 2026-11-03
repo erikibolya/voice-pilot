@@ -36,6 +36,8 @@ DESTRUCTIVE = (
     "odinstalovat", "uninstall",
     "přepsat", "overwrite",
     "vypnout", "restartovat",
+    # volání a hovory: omylem vytořený hovor nejde vzít zpět
+    "zavolat", "zavolej", "volat", "hovor", "call",
 )
 
 
@@ -99,7 +101,7 @@ class Plan:
     say: str = ""
     actions: list[Action] = field(default_factory=list)
     error: str = ""
-
+    done: bool = False
     @property
     def needs_confirmation(self) -> bool:
         return bool(self.actions)
@@ -151,7 +153,7 @@ def parse(text: str) -> Plan:
             # jedna vadná akce zruší celý plán - částečné provedení je horší
             return Plan(say=say or text.strip(), error=str(exc))
 
-    return Plan(say=say or text.strip(), actions=actions)
+    return Plan(say=say or text.strip(), actions=actions, done=bool(data.get("done")))
 
 
 # --------------------------------------------------------------- popis

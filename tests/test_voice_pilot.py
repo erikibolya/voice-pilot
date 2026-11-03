@@ -538,6 +538,7 @@ def _snap_pro_akce():
         elements=[
             Element(index=1, kind="tlačítko", name="Přejmenovat", x=10, y=10, w=40, h=20),
             Element(index=2, kind="tlačítko", name="Smazat", x=60, y=10, w=40, h=20),
+            Element(index=3, kind="tlačítko", name="Zobrazit", x=110, y=10, w=40, h=20),
         ],
     )
 
@@ -546,7 +547,7 @@ def _reply_s_akci(target: int = 1):
     from pilot.actions import Action, Plan
     from pilot.brain import Reply
 
-    plan = Plan(say="Jdu na to.", actions=[Action(type="click", target=target)])
+    plan = Plan(say="Jdu na to.", actions=[Action(type="click", target=target)], done=True)
     return Reply(say="Jdu na to.", plan=plan)
 
 
@@ -822,3 +823,133 @@ def test_transcriber_prewarm_nacte_model_na_pozadi(cfg, monkeypatch):
     time.sleep(0.2)
 
     assert nacteno, "prewarm model vůbec nenačetl"
+
+
+def test_render_oddeli_panel_uloh_od_okna():
+    """Panel úloh je samostatné okno — musí být v seznamu zvlášť."""
+    from pilot.eyes import Element, Snapshot
+
+    snap = Snapshot(
+        active_title="Faktury",
+        active_class="CabinetWClass",
+        elements=[
+            Element(index=1, kind="tlačítko", name="Přejmenovat", x=0, y=0, w=10, h=10),
+            Element(index=2, kind="tlačítko", name="Affinity Designer 2", x=0, y=1000, w=10, h=10),
+        ],
+        taskbar_from=2,
+    )
+
+    text = snap.render()
+
+    assert "PRVKY V AKTIVNÍM OKNĚ" in text
+    assert "PRVKY V PANELU ÚLOH" in text
+    assert "[1]" in text and "[2]" in text
+    # prvek panelu nesmí být v části aktivního okna
+    okno_cast = text.split("PRVKY V PANELU ÚLOH")[0]
+    assert "Affinity" not in okno_cast
+
+
+@pytest.mark.desktop
+def test_snapshot_obsahne_panel_uloh(cfg):
+    """Regrese: dřív snímek četl jen aktivní okno, takže na ikonu v liště
+    nešlo kliknout — model ji vůbec neviděl."""
+    snap = eyes.snapshot(cfg)
+
+    assert snap.taskbar_from is not None, "panel úloh se nepřečetl"
+    panel = [e for e in snap.elements if e.index >= snap.taskbar_from]
+    assert panel, "panel úloh je prázdný"
+
+
+def _engine_pro_smycku(cfg, monkeypatch, kroky_next):
+    from pilot import actions as act
+    from pilot.actions import Action, Plan
+    from pilot.brain import Reply
+    from pilot.engine import Engine
+
+    provedeno: list = []
+    monkeypatch.setattr(act, "execute", lambda a, s: provedeno.append(a.target) or "ok")
+    monkeypatch.setattr("pilot.engine.eyes.snapshot", lambda c: _snap_pro_akce())
+
+    engine = Engine(cfg, on_event=lambda e: None)
+    monkeypatch.setattr(engine.speaker, "say", lambda t: None)
+    monkeypatch.setattr(
+        engine.brain,
+        "look_and_answer",
+        lambda t, s: Reply(say="", plan=Plan(say="", actions=[Action(type="click", target=1)])),
+    )
+    iterator = iter(kroky_next)
+    monkeypatch.setattr(
+        engine.brain,
+        "next_step",
+        lambda cil, provedene, snap: next(iterator, Plan(say="", actions=[], done=True)),
+    )
+    engine.confirmer = lambda p, d: False
+    return engine, provedeno
+
+
+def test_smycka_udela_vic_kroku_k_cili(cfg, monkeypatch):
+    """Autonomie: model dostane nový snímek a rozhodne další krok."""
+    from pilot.actions import Action, Plan
+
+    engine, provedeno = _engine_pro_smycku(
+        cfg,
+        monkeypatch,
+        [
+            Plan(say="Hotovo.", actions=[Action(type="click", target=3)], done=True),
+        ],
+    )
+
+    engine.ask("klikni na obě tlačítka", background=False)
+
+    assert provedeno == [1, 3], "smyčka má provést oba kroky"
+
+
+def test_smycka_skonci_kdyz_model_rekne_done(cfg, monkeypatch):
+    from pilot.actions import Action, Plan
+
+    engine, provedeno = _engine_pro_smycku(
+        cfg,
+        monkeypatch,
+        [Plan(say="Hotovo.", actions=[], done=True)],
+    )
+
+    engine.ask("klikni", background=False)
+
+    assert provedeno == [1], "po done se nesmí pokračovat"
+
+
+def test_smycka_se_zastavi_na_rozpoctu_kroku(cfg, monkeypatch):
+    """Nikdy nesmí běžet do nekonečna."""
+    from pilot.actions import Action, Plan
+
+    engine, provedeno = _engine_pro_smycku(
+        cfg,
+        monkeypatch,
+        [Plan(say="", actions=[Action(type="click", target=1)], done=False) for _ in range(50)],
+    )
+    engine.cfg = type(engine.cfg)(**{**engine.cfg.__dict__, "max_steps": 4})
+
+    engine.ask("pořád dokola", background=False)
+
+    assert len(provedeno) <= 4, f"smíčka udělala {len(provedeno)} kroků"
+
+
+def test_smycka_se_zastavi_pri_opakujicim_se_kroku(cfg, monkeypatch):
+    """Když model navrhuje pořád to samé, něco je špatně — skončit."""
+    from pilot.actions import Action, Plan
+
+    stejny = [Plan(say="", actions=[Action(type="click", target=1)], done=False) for _ in range(20)]
+    engine, provedeno = _engine_pro_smycku(cfg, monkeypatch, stejny)
+
+    engine.ask("klikni", background=False)
+
+    assert len(provedeno) <= 3, f"opakování se nezastavilo ({len(provedeno)} kroků)"
+
+
+@pytest.mark.parametrize("text", ["zavolat Ondrovi", "Zavolej", "call Ondra", "hovor"])
+def test_hovor_je_nevratny(text):
+    """Omylem vytořený hovor nejde vzít zpět — má se na něj zeptat."""
+    from pilot.actions import Action, Plan
+
+    plan = Plan(say="x", actions=[Action(type="type", text=text)])
+    assert plan.is_destructive
