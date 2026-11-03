@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import httpx
 
-MAX_SIRKA = 1280
+MAX_SIRKA = 1920
 KVALITA = 70
 
 

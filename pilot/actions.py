@@ -115,6 +115,7 @@ class Plan:
     actions: list[Action] = field(default_factory=list)
     error: str = ""
     done: bool = False
+    from_json: bool = False
     @property
     def needs_confirmation(self) -> bool:
         return bool(self.actions)
@@ -147,7 +148,7 @@ def parse(text: str) -> Plan:
     """Přečte odpověď modelu. Když není JSON, bereme to jako čistou řeč."""
     data = _extract_json(text)
     if data is None:
-        return Plan(say=text.strip())
+        return Plan(say=text.strip(), from_json=False)
 
     # Prázdné "say" je legitimní (model jen jedná a mluvit nemá).
     # Nikdy ho nenahrazuj surovým JSONem — to se pak čte nahlas.
@@ -168,7 +169,7 @@ def parse(text: str) -> Plan:
             # jedna vadná akce zruší celý plán - částečné provedení je horší
             return Plan(say=say, error=str(exc))
 
-    return Plan(say=say, actions=akce, done=bool(data.get("done")))
+    return Plan(say=say, actions=akce, done=bool(data.get("done")), from_json=True)
 
 
 # --------------------------------------------------------------- popis
