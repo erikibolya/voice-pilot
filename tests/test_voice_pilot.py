@@ -794,7 +794,8 @@ def test_hlas_jde_menit_jen_u_edge(cfg, monkeypatch):
     from pilot.ui.settings import SettingsDialog
 
     app = _qt()
-    dialog = SettingsDialog(replace(cfg, tts_engine="piper"))
+    # vynucený jazyk — u "auto" se hlas vybírá sám, viz test níž
+    dialog = SettingsDialog(replace(cfg, tts_engine="piper", language="cs"))
 
     try:
         assert not dialog.voice.isEnabled(), "u Piperu nemá jít hlas měnit"
@@ -803,7 +804,7 @@ def test_hlas_jde_menit_jen_u_edge(cfg, monkeypatch):
         index = dialog.engine.findData("edge")
         dialog.engine.setCurrentIndex(index)
 
-        assert dialog.voice.isEnabled(), "u edge-tts hlas měnit jde"
+        assert dialog.voice.isEnabled(), "u edge-tts s vynuceným jazykem hlas měnit jde"
     finally:
         dialog.close()
         app.processEvents()
@@ -1215,3 +1216,27 @@ def test_vynuceny_jazyk_hlas_nemeni(cfg):
     engine._podle_jazyka()
 
     assert engine.speaker.voice_override is None, "při vynuceném jazyce se hlas neřídí detekcí"
+
+
+def test_pri_automatickem_jazyce_se_hlas_nevybira(cfg, monkeypatch):
+    """Když se jazyk pozná z řeči, hlas se řídí jím — ruční volba nemá smysl."""
+    from dataclasses import replace
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from pilot.ui.settings import SettingsDialog
+
+    app = _qt()
+    dialog = SettingsDialog(replace(cfg, tts_engine="edge", language="auto"))
+
+    try:
+        assert not dialog.voice.isEnabled(), "u auto se hlas nemá vybírat ručně"
+        assert "pozná z řeči" in dialog.note.text()
+
+        index = dialog.language.findData("cs")
+        dialog.language.setCurrentIndex(index)
+
+        assert dialog.voice.isEnabled(), "u vynuceného jazyka se hlas vybírá"
+    finally:
+        dialog.close()
+        app.processEvents()
