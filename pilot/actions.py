@@ -136,24 +136,26 @@ def parse(text: str) -> Plan:
     if data is None:
         return Plan(say=text.strip())
 
+    # Prázdné "say" je legitimní (model jen jedná a mluvit nemá).
+    # Nikdy ho nenahrazuj surovým JSONem — to se pak čte nahlas.
     say = str(data.get("say") or "").strip()
     raw = data.get("actions") or []
 
     if not isinstance(raw, list):
-        return Plan(say=say or text.strip(), error="akce musí být seznam")
+        return Plan(say=say, error="akce musí být seznam")
 
     if len(raw) > MAX_ACTIONS:
         return Plan(say=say, error=f"příliš mnoho akcí ({len(raw)}), limit je {MAX_ACTIONS}")
 
-    actions: list[Action] = []
+    akce: list[Action] = []
     for item in raw:
         try:
-            actions.append(Action.from_dict(item))
+            akce.append(Action.from_dict(item))
         except ActionError as exc:
             # jedna vadná akce zruší celý plán - částečné provedení je horší
-            return Plan(say=say or text.strip(), error=str(exc))
+            return Plan(say=say, error=str(exc))
 
-    return Plan(say=say or text.strip(), actions=actions, done=bool(data.get("done")))
+    return Plan(say=say, actions=akce, done=bool(data.get("done")))
 
 
 # --------------------------------------------------------------- popis

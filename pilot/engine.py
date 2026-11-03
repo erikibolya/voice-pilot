@@ -216,7 +216,7 @@ class Engine:
         """
         cil_ukolu = cil_ukolu or say
         provedene: list[str] = []
-        posledni_say = say
+        posledni_say = ""
         posledni_popis = ""
         opakovani = 0
 
@@ -312,7 +312,10 @@ class Engine:
                 self._log(f"Plán neprošel: {plan.error}", "error")
                 break
 
-            posledni_say = plan.say or posledni_say
+            # Mluvíme jen na konci. Mezitímní „klikl jsem, přešel jsem správně“
+            # je šum — uživatel to nechce poslouchat u každého kroku.
+            if plan.done and plan.say:
+                posledni_say = plan.say
             eyes.release(snap)
 
         if posledni_say:
