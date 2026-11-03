@@ -11,6 +11,7 @@ Dvě věci:
 from __future__ import annotations
 
 import math
+import time
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import (
@@ -313,10 +314,15 @@ class ControlFrame(QWidget):
 class Overlays:
     """Drží všechny překryvy a stará se o jejich stav."""
 
+    # aby krátká akce neblikla a nezmizela dřív, než ji člověk zaregistruje
+    MINIMUM_VIDITELNE = 1.2
+
     def __init__(self):
         self.diktovani = DictationOverlay()
         self.ramy = [ControlFrame(s) for s in QGuiApplication.screens()]
         self._tema = "dark"
+        self._zapnuto_v = 0.0
+        self._ceka_na_schovani: QTimer | None = None
 
     def set_theme(self, theme: str) -> None:
         self._tema = theme
@@ -334,6 +340,28 @@ class Overlays:
         self.diktovani.push_level(hodnota)
 
     def show_control(self, aktivni: bool) -> None:
+        if aktivni:
+            self._zapnuto_v = time.monotonic()
+            if self._ceka_na_schovani is not None:
+                self._ceka_na_schovani.stop()
+                self._ceka_na_schovani = None
+            self._zobraz(True)
+            return
+
+        zbyva = self.MINIMUM_VIDITELNE - (time.monotonic() - self._zapnuto_v)
+        if zbyva > 0:
+            if self._ceka_na_schovani is None:
+                self._ceka_na_schovani = QTimer()
+                self._ceka_na_schovani.setSingleShot(True)
+                self._ceka_na_schovani.timeout.connect(
+                    lambda: (self._zobraz(False), setattr(self, "_ceka_na_schovani", None))
+                )
+            self._ceka_na_schovani.start(int(zbyva * 1000))
+            return
+
+        self._zobraz(False)
+
+    def _zobraz(self, aktivni: bool) -> None:
         # obrazovky se mohly mezitím změnit (připojení monitoru)
         if len(self.ramy) != len(QGuiApplication.screens()):
             for ram in self.ramy:
