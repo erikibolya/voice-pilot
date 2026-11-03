@@ -96,6 +96,14 @@ def run(cfg) -> int:
     engine.on_level = overlays.level
     bridge.event.connect(prekryvy)
 
+    # most pro rozšíření v prohlížeči (webové stránky)
+    try:
+        from .. import bridge as _bridge
+
+        _bridge.most().start()
+    except Exception:
+        pass
+
     # Oba modely se načítají v jednom vlákně a popořadě: Whisper i Piper
     # inicializují CUDA/DLL a souběžně to umí shodit proces.
     def prehrej() -> None:

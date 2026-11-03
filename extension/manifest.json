@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "voice-pilot bridge",
+  "version": "0.1.0",
+  "description": "Nechá voice-pilot číst a ovládat stránky v tomto prohlížeči.",
+  "permissions": ["tabs", "scripting", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "voice-pilot"
+  }
+}

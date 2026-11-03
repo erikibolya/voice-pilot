@@ -53,9 +53,10 @@ class Element:
     h: int
     # živý ovládací prvek pro UI Automation; do textu pro model nepatří
     control: object | None = field(default=None, repr=False, compare=False)
-    # "uia" pro Windows, "cdp" pro prvek na webové stránce
+    # "uia" pro Windows, "cdp" pro DevTools, "web" pro rozšíření v prohlížeči
     source: str = "uia"
     cdp_index: int | None = None
+    tab: int | None = None
 
     @property
     def center(self) -> tuple[int, int]:
@@ -357,39 +358,73 @@ def _snapshot(cfg) -> Snapshot:
     except Exception:
         pass
 
-    # Web: UI Automation z Chrome obsah nevydá, takže se ptáme prohlížeče
-    # přímo přes DevTools Protocol — jen když je Chrome vpředu a port běží.
+    # Web: UI Automation z Chrome obsah nevydá. Nejdřív zkusíme rozšíření
+    # v prohlížeči (funguje s normálním profilem), pak DevTools port.
     try:
-        if "Chrome_WidgetWin_1" in snap.active_class:
-            from . import cdp
-
-            if cdp.available():
-                tab = cdp.tab_for_window(snap.active_title)
-                if tab is not None:
-                    try:
-                        prvky = tab.elements()[: cfg.max_web_elements]
-                    finally:
-                        tab.close()
-                    if prvky:
-                        snap.web_from = len(snap.elements) + 1
-                        for p in prvky:
-                            snap.elements.append(
-                                Element(
-                                    index=len(snap.elements) + 1,
-                                    kind=str(p.get("tag", "prvek")),
-                                    name=str(p.get("text", "")),
-                                    x=int(p.get("x", 0)),
-                                    y=int(p.get("y", 0)),
-                                    w=int(p.get("w", 0)),
-                                    h=int(p.get("h", 0)),
-                                    source="cdp",
-                                    cdp_index=int(p.get("i", 0)),
-                                )
-                            )
+        if "Chrome_WidgetWin_1" in snap.active_class or "MozillaWindowClass" in snap.active_class:
+            _pripoj_web(snap, cfg)
     except Exception:
         pass
 
     return snap
+
+
+def _pripoj_web(snap: Snapshot, cfg) -> None:
+    from . import bridge
+
+    if bridge.dostupne():
+        karta = bridge.karta_pro_okno(snap.active_title)
+        prvky = bridge.prvky(karta)[: cfg.max_web_elements]
+        if prvky:
+            snap.web_from = len(snap.elements) + 1
+            for p in prvky:
+                snap.elements.append(
+                    Element(
+                        index=len(snap.elements) + 1,
+                        kind=str(p.get("tag", "prvek")),
+                        name=str(p.get("text", "")),
+                        x=int(p.get("x", 0)),
+                        y=int(p.get("y", 0)),
+                        w=int(p.get("w", 0)),
+                        h=int(p.get("h", 0)),
+                        source="web",
+                        cdp_index=int(p.get("i", 0)),
+                        tab=karta,
+                    )
+                )
+        return
+
+    from . import cdp
+
+    if not cdp.available():
+        return
+
+    tab = cdp.tab_for_window(snap.active_title)
+    if tab is None:
+        return
+    try:
+        prvky = tab.elements()[: cfg.max_web_elements]
+    finally:
+        tab.close()
+
+    if not prvky:
+        return
+
+    snap.web_from = len(snap.elements) + 1
+    for p in prvky:
+        snap.elements.append(
+            Element(
+                index=len(snap.elements) + 1,
+                kind=str(p.get("tag", "prvek")),
+                name=str(p.get("text", "")),
+                x=int(p.get("x", 0)),
+                y=int(p.get("y", 0)),
+                w=int(p.get("w", 0)),
+                h=int(p.get("h", 0)),
+                source="cdp",
+                cdp_index=int(p.get("i", 0)),
+            )
+        )
 
 
 def _taskbar_control(okna: list[dict]):
