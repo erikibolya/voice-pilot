@@ -58,22 +58,34 @@ def run(cfg) -> int:
     # --- klávesa: drží se, po puštění se přestane nahrávat -----------------
     keys = HotkeyBridge()
 
-    keys.started.connect(engine.start_listening)
-    keys.stopped.connect(engine.stop_listening)
+    keys.started.connect(engine.start_dictation)
+    keys.stopped.connect(engine.stop_dictation)
     keys.confirm.connect(lambda: confirmer.answer(True))
     keys.cancel.connect(lambda: confirmer.answer(False))
 
+    diktovani = {"zapnuto": False}
+
     def prekryvy(payload: dict) -> None:
         """Překryvy se řídí stavem, ne vstupní cestou — platí i pro tlačítko."""
-        if payload.get("type") == "state":
+        typ = payload.get("type")
+
+        if typ == "dictation":
+            diktovani["zapnuto"] = bool(payload.get("on"))
+            if diktovani["zapnuto"]:
+                overlays.begin_dictation()
+            else:
+                overlays.end_dictation()
+            return
+
+        if typ == "state" and not diktovani["zapnuto"]:
             if payload.get("value") == "listening":
                 overlays.begin_dictation()
             else:
                 overlays.end_dictation()
-        elif payload.get("type") == "control":
+        elif typ == "control":
             overlays.show_control(bool(payload.get("on")))
 
-    engine.mic.on_level = overlays.level
+    engine.on_level = overlays.level
     bridge.event.connect(prekryvy)
 
     # model hlasu se načte dřív, než ho bude potřeba

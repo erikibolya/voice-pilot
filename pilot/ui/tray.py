@@ -86,13 +86,13 @@ class Tray(QSystemTrayIcon):
             return
         state = payload.get("value")
         labels = {
-            "idle": f"Připraven — drž {self._popis} a mluv",
-            "listening": "Poslouchám…",
-            "thinking": "Přemýšlím…",
+            "idle": f"Připraven — {self._popis} zapne diktování",
+            "listening": "Diktuji…",
+            "thinking": "Pracuji…",
             "speaking": "Mluvím…",
             "error": "Chyba — podívej se do okna",
         }
         self.setToolTip(f"voice-pilot — {labels.get(state, state)}")
         self.action_listen.setText(
-            "Ukončit nahrávání" if state == "listening" else "Nahrát teď"
+            "Ukončit diktování" if state == "listening" else "Diktovat"
         )

@@ -43,6 +43,7 @@ def _watcher(combo="ctrl+alt+space"):
         combo,
         lambda: udalosti.append("start"),
         lambda: udalosti.append("stop"),
+        toggle=False,
     )
     w._injektovano = False
     return w, udalosti
@@ -125,3 +126,57 @@ def test_shift_se_nerovna_velkemu_pismenu():
     w._press("a")
 
     assert udalosti == ["start"]
+
+
+def _prepinac(combo="f9"):
+    udalosti: list[str] = []
+    w = HotkeyWatcher(
+        combo,
+        lambda: udalosti.append("start"),
+        lambda: udalosti.append("stop"),
+        toggle=True,
+    )
+    w._injektovano = False
+    return w, udalosti
+
+
+def test_prepinac_zapne_a_vypne_jednim_stisknutim():
+    w, udalosti = _prepinac()
+
+    w._press(keyboard.Key.f9)
+    w._release(keyboard.Key.f9)
+    assert udalosti == ["start"]
+
+    w._press(keyboard.Key.f9)
+    w._release(keyboard.Key.f9)
+    assert udalosti == ["start", "stop"]
+
+
+def test_prepinac_neresi_pusteni():
+    w, udalosti = _prepinac()
+
+    w._press(keyboard.Key.f9)
+    w._release(keyboard.Key.f9)
+    w._release(keyboard.Key.f9)
+
+    assert udalosti == ["start"], "puštění u přepínače nic nedělá"
+
+
+def test_prepinac_ignoruje_injektovane():
+    w, udalosti = _prepinac()
+
+    w._injektovano = True
+    w._press(keyboard.Key.f9)
+
+    assert udalosti == []
+
+
+def test_prepinac_ignoruje_auto_repeat_drzene_klavesy():
+    """Držená F9 posílá keydown pořád dokola — nesmí to kmitat režimem."""
+    w, udalosti = _prepinac()
+
+    w._press(keyboard.Key.f9)
+    for _ in range(5):
+        w._press(keyboard.Key.f9)   # opakování z držení
+
+    assert udalosti == ["start"], "auto-repeat nesmí přepínat"

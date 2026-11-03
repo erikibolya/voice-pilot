@@ -26,6 +26,9 @@ class Config:
     sample_rate: int = 16000
     # pod tuto délku zvuku se nahrávka zahodí (mlasknutí apod.)
     min_speech_seconds: float = 0.4
+    # průběžné diktování: kdy je ticho dost dlouhé na konec věty
+    vad_threshold: float = 0.02
+    vad_silence_seconds: float = 0.65
 
     # --- Hlas: TTS ---
     tts_engine: str = "auto"  # auto | edge | piper

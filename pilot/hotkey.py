@@ -107,10 +107,12 @@ class HotkeyWatcher:
         combo: str,
         on_start: Callable[[], None],
         on_stop: Callable[[], None],
+        toggle: bool = True,
     ):
         self.combo = combo
         self.on_start = on_start
         self.on_stop = on_stop
+        self.toggle = toggle
 
         self._pozadovane = set(parse(combo))
         self._stisknute: set[str] = set()
@@ -161,14 +163,27 @@ class HotkeyWatcher:
         if not nazev:
             return
 
+        # Opakované keydown z držené klávesy poznáme podle toho, že už je
+        # ve stavu. Tím se při přepínači nemusí čekat na žádný čas.
+        if nazev in self._stisknute:
+            return
         self._stisknute.add(nazev)
+
+        if not self._pozadovane.issubset(self._stisknute):
+            return
+
+        if self.toggle:
+            self._aktivni = not self._aktivni
+            try:
+                (self.on_start if self._aktivni else self.on_stop)()
+            except Exception:
+                pass
+            return
 
         if self._aktivni:
             return
         if time.monotonic() - self._konec_v < 0.25:
-            return  # potlačení dvojího spuštění
-        if not self._pozadovane.issubset(self._stisknute):
-            return
+            return  # potlačení dvojího spuštění u držení
 
         self._aktivni = True
         try:
@@ -180,10 +195,13 @@ class HotkeyWatcher:
         nazev = _nazev(klavesa)
         self._stisknute.discard(nazev)
 
+        if self.toggle:
+            return  # u přepínače puštění nic nedělá
+
         if not self._aktivni:
             return
 
-        # ukončíme, jakmile pustíš kteroukoli klávesu z kombinace
+        # u držení ukončíme, jakmile pustíš kteroukoli klávesu z kombinace
         if nazev in self._pozadovane:
             self._aktivni = False
             self._konec_v = time.monotonic()

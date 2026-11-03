@@ -68,8 +68,8 @@ Aplikace běží v okně i v systémové liště.
 
 | | |
 |---|---|
-| **drž klávesu** | nahrává, dokud držíš; puštěním odešleš |
-| **klik na mikrofon** | totéž (klikni pro start, klikni pro stop) |
+| **F9** | zapne diktování; druhá F9 ho vypne |
+| **klik na mikrofon** | totéž co F9 |
 | **psaný dotaz** | napiš do pole dole a zmáčkni Enter |
 | **zavření okna** | skryje do lišty, aplikace běží dál |
 | **dvojklik na ikonu** | vrátí okno |
@@ -78,6 +78,19 @@ Aplikace běží v okně i v systémové liště.
 Výchozí klávesa je **F9**, ale dá se změnit v nastavení — klikni na tlačítko
 a stiskni, co chceš. Samotné písmeno se nepovolí (spouštělo by se psaním);
 povolená je funkční klávesa, speciální klávesa, nebo kombinace s modifikátorem.
+
+## Diktovací režim
+
+F9 **nezapíná jedno nahrávání — přepíná režim.**
+
+Zapneš ho, mluvíš průběžně a on po každé větě rovnou jedná. Nic nemusíš
+mačkat mezi větami. Vypneš ho druhou F9.
+
+- **Věty se dělí tichem**, ne klávesou. Když na ~0,65 s přestaneš mluvit,
+  věta se přepíše a provede.
+- **Nemluví zpátky.** V tomhle režimu jen jedná — odpovědi by zdržovaly.
+- **Překryv zůstává vidět** celou dobu, takže je poznat, že poslouchá.
+- Potvrzení u nevratných akcí pořád platí.
 
 Dokud držíš klávesu, **dole uprostřed obrazovky pulzuje pruh** s nápisem
 DIKTUJI — je vidět, že mikrofon poslouchá, i když se nedíváš do okna.

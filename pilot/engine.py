@@ -48,6 +48,9 @@ class Engine:
 
         self.state = IDLE
         self._busy = False
+        self._diktovani = None
+        self.speak_replies = True
+        self.on_level = None
 
         # Kdo potvrzuje akce. Výchozí je "ne" — bez obsluhy se nic neprovede.
         self.confirmer: Callable[[str, bool], bool] = lambda popis, nebezpecna: False
@@ -88,11 +91,68 @@ class Engine:
         return self.brain.client.preflight()
 
     def toggle(self) -> None:
-        """F9: začni nebo dokonči nahrávání."""
-        if self.mic.is_recording:
-            self.stop_listening()
+        """F9: zapne nebo vypne průběžné diktování."""
+        if self._diktovani is not None:
+            self.stop_dictation()
         else:
-            self.start_listening()
+            self.start_dictation()
+
+    def start_dictation(self) -> None:
+        if self._diktovani is not None:
+            return
+        if self._busy:
+            self._log("Počkej, ještě dodělávám předchozí dotaz.", "warn")
+            return
+
+        from .dictation import DictationSession
+
+        self.speak_replies = False
+        self._diktovani = DictationSession(
+            self.cfg,
+            on_utterance=self._on_utterance,
+            on_level=self._uroven,
+        )
+        self._diktovani.start()
+        self._emit({"type": "dictation", "on": True})
+        self._set_state(LISTENING, "diktuji")
+
+    def stop_dictation(self) -> None:
+        if self._diktovani is None:
+            return
+        self._diktovani.stop()
+        self._diktovani = None
+        self.speak_replies = True
+        self._emit({"type": "dictation", "on": False})
+        self._set_state(IDLE)
+
+    @property
+    def diktuje(self) -> bool:
+        return self._diktovani is not None
+
+    def _uroven(self, hodnota: float) -> None:
+        if self.on_level is not None:
+            try:
+                self.on_level(hodnota)
+            except Exception:
+                pass
+
+    def _on_utterance(self, audio) -> None:
+        """Jedna věta z průběžného diktování — přepiš a hned jednej."""
+        if self._busy:
+            return
+        self._set_state(THINKING, "přepisuji")
+        try:
+            text = self.transcriber.transcribe(audio)
+        except Exception as exc:
+            self._log(f"Přepis selhal: {exc}", "error")
+            return
+
+        if not text:
+            self._set_state(LISTENING, "diktuji")
+            return
+
+        self._emit({"type": "heard", "text": text})
+        self._answer(text, None)
 
     def start_listening(self) -> None:
         if self._busy:
@@ -347,6 +407,8 @@ class Engine:
         )
 
     def _speak(self, text: str) -> None:
+        if not self.speak_replies:
+            return
         self._set_state(SPEAKING)
         t0 = time.monotonic()
         zaznamenano = {"t": None}
@@ -369,7 +431,7 @@ class Engine:
     def _done(self) -> None:
         self._emit({"type": "control", "on": False})
         self._busy = False
-        self._set_state(IDLE)
+        self._set_state(LISTENING if self._diktovani else IDLE)
 
         if self._cas_prepisu or self._cas_modelu:
             riadok = (
@@ -395,6 +457,9 @@ class Engine:
     # -------------------------------------------------------- ukončení
 
     def shutdown(self) -> None:
+        if self._diktovani is not None:
+            self._diktovani.stop()
+            self._diktovani = None
         try:
             sd.stop()
         except Exception:
