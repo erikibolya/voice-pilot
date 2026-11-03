@@ -1355,3 +1355,38 @@ def test_vision_prompt_obsahuje_rozmery(cfg):
     assert "1280x720" in vyzva
     assert "zavři discord" in vyzva
     assert '"x"' in vyzva
+
+
+def test_souradnice_mimo_snimek_se_neklikne(cfg, monkeypatch):
+    """Regrese: model vrátil (522, 1038) u snímku 1280x720 a kliklo se vedle."""
+    from pilot import vision
+
+    kliknuto = []
+    monkeypatch.setattr("pilot.actions._klik_mysi", lambda x, y, k: kliknuto.append((x, y)))
+
+    obraz = vision.Snimek(data=b"", sirka=1280, vyska=720, offset_x=0, offset_y=0, scale=1.5)
+    mimo = (522, 1038)
+
+    assert not (0 <= mimo[0] < obraz.sirka and 0 <= mimo[1] < obraz.vyska)
+    assert kliknuto == []
+
+
+def test_plan_vi_jestli_prisel_json():
+    from pilot import actions
+
+    json_plan = actions.parse('{"say": "", "actions": [], "done": true}')
+    assert json_plan.from_json is True
+
+    rec_plan = actions.parse("The user asks to minimize Discord. Let me look at the image.")
+    assert rec_plan.from_json is False, "uvažování modelu se nesmí tvářit jako odpověď"
+
+
+def test_vision_prompt_zakazuje_uvažování(cfg):
+    from pilot.brain import Brain
+    from pilot.vision import Snimek
+
+    obraz = Snimek(data=b"", sirka=1920, vyska=1080, offset_x=0, offset_y=0, scale=1.0)
+    vyzva = Brain(replace(cfg, use_vision=True)).vision_prompt("zavři discord", [], obraz)
+
+    assert "POUZE JSON" in vyzva
+    assert "uvažování" in vyzva

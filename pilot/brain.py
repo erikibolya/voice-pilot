@@ -98,6 +98,8 @@ class Brain:
     def vision_prompt(self, cil: str, provedeno: list[str], obraz) -> str:
         """Výzva k modelu, který se dívá na screenshot."""
         radky = [
+            "ODPOVÍDEJ POUZE JSON. Nepiš své uvažování, nekomentuj, nepopisuj, co vidíš.",
+            "",
             "Jsi Pilot, hlasový asistent, který ovládá český Windows. Díváš se na screenshot obrazovky.",
             "",
             f"Obrázek má {obraz.sirka}x{obraz.vyska} pixelů. Souřadnice vracej v TĚCHTO pixelech,"
@@ -125,6 +127,10 @@ class Brain:
         ]
         if provedeno:
             radky += ["", "--- UŽ PROVEDENO ---"] + [f"  - {k}" for k in provedeno[-10:]]
+        radky += [
+            "",
+            "PŘIPOMÍNKA: odpověz jen JSON objektem. Žádné uvažování, žádné vysvětlování.",
+        ]
         return "\n".join(radky)
 
     def describe_screen(self) -> Reply:

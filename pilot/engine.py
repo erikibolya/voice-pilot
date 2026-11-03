@@ -322,15 +322,47 @@ class Engine:
                 self._log(f"Plán neprošel: {plan.error}", "error")
                 break
 
+            if not plan.from_json:
+                # model místo JSON napsal uvažování — jednou to zkusit natvrdo
+                self._log("Model nevrátil JSON, zkouším znovu.", "warn")
+                try:
+                    raw = citac.zeptej_se(
+                        'Odpověz POUZE jedním JSON objektem, bez uvažování a bez textu okolo:\n'
+                        '{"say": "", "actions": [], "done": false}\n'
+                        f'Úkol: {text}\n'
+                        f'Obrázek má {obraz.sirka}x{obraz.vyska} px, souřadnice v těchto pixelech.',
+                        obraz,
+                    )
+                    plan = actions.parse(raw)
+                except Exception as exc:
+                    self._fail(f"Vision selhal: {exc}")
+                    return
+
+                if not plan.from_json:
+                    self._log("Model stále nevrací JSON — končím, ať neklikám naslepo.", "error")
+                    break
+
             if not plan.actions:
                 self._emit({"type": "answer", "text": plan.say})
                 posledni_say = plan.say
                 break
 
-            # souřadnice z obrázku na skutečnou obrazovku
+            # souřadnice z obrázku na skutečnou obrazovku; mimo obrázek = neklikat
+            mimo = None
             for akce in plan.actions:
-                if akce.x is not None and akce.y is not None:
-                    akce.x, akce.y = obraz.na_obrazovku(akce.x, akce.y)
+                if akce.x is None or akce.y is None:
+                    continue
+                if not (0 <= akce.x < obraz.sirka and 0 <= akce.y < obraz.vyska):
+                    mimo = (akce.x, akce.y)
+                    break
+                akce.x, akce.y = obraz.na_obrazovku(akce.x, akce.y)
+
+            if mimo is not None:
+                self._log(
+                    f"Souřadnice ({mimo[0]}, {mimo[1]}) jsou mimo snímek {obraz.popis} — neklikám.",
+                    "error",
+                )
+                break
 
             prazdno = eyes.Snapshot()
             popis = actions.describe(plan, prazdno)
