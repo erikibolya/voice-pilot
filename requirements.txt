@@ -9,3 +9,4 @@ sounddevice
 uiautomation
 httpx
 PySide6-Essentials
+websocket-client

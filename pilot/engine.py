@@ -415,7 +415,11 @@ class Engine:
         if puvodni is None:
             return akce
 
-        nalezeny = novy.find_like(puvodni)
+        # u webu se text nemění, ale pozice při scrollování ano — párujeme podle textu
+        if puvodni.source == "cdp":
+            nalezeny = novy.find_by_name(puvodni.name, source="cdp")
+        else:
+            nalezeny = novy.find_like(puvodni)
         if nalezeny is None:
             raise actions.ActionError(f"„{puvodni.name}“ už na obrazovce není")
 

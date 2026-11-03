@@ -217,6 +217,9 @@ def execute(action: Action, snap: Snapshot) -> str:
     if action.target is not None and element is None:
         raise ActionError(f"prvek [{action.target}] už na obrazovce není")
 
+    if element is not None and element.source == "cdp":
+        return _na_webu(action, element)
+
     if action.type in ("click", "double_click", "right_click"):
         _klikni(element, action.type)
         return f"kliknuto na „{element.name}“"
@@ -244,6 +247,32 @@ def execute(action: Action, snap: Snapshot) -> str:
         return f"rolováno {action.direction}"
 
     raise ActionError(f"akci {action.type} neumím provést")
+
+
+def _na_webu(action: Action, element: Element) -> str:
+    """Akce na prvku webové stránky — přes DevTools Protocol."""
+    from . import cdp
+
+    tab = cdp.first_page()
+    if tab is None:
+        raise ActionError("prohlížeč s debugging portem neběží")
+
+    try:
+        if action.type in ("click", "double_click", "invoke", "focus"):
+            tab.click(element.cdp_index or 0, element.name)
+            return f'kliknuto na „{element.name}“'
+
+        if action.type == "type":
+            tab.napis(element.cdp_index or 0, action.text)
+            return f'napsáno do „{element.name}“'
+
+        if action.type == "key" and action.keys.strip().lower() in ("enter", "return"):
+            tab.enter()
+            return "stisknut Enter"
+
+        raise ActionError(f"na webové stránce neumím {action.type}")
+    finally:
+        tab.close()
 
 
 def _klikni(element: Element, kind: str) -> None:
