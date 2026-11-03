@@ -35,6 +35,8 @@ class Config:
 
     # --- Oči: UI Automation ---
     max_elements: int = 70
+    max_taskbar_elements: int = 60
+    max_steps: int = 12
     max_depth: int = 7
     ui_budget_seconds: float = 3.0
     include_all_windows: bool = True

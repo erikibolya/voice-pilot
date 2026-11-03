@@ -65,6 +65,8 @@ class Snapshot:
     active_class: str = ""
     windows: list[dict] = field(default_factory=list)
     elements: list[Element] = field(default_factory=list)
+    # index prvního prvku panelu úloh; None když se nepřečetl
+    taskbar_from: int | None = None
 
     def render(self) -> str:
         lines: list[str] = []
@@ -77,14 +79,24 @@ class Snapshot:
                 for w in others[:14]:
                     lines.append(f'  - "{_short(w["title"], 60)}"')
 
-        if self.elements:
+        okno = [e for e in self.elements if self.taskbar_from is None or e.index < self.taskbar_from]
+        panel = [e for e in self.elements if self.taskbar_from is not None and e.index >= self.taskbar_from]
+
+        if okno:
             lines.append("PRVKY V AKTIVNÍM OKNĚ (klikat lze jen na tato čísla):")
-            for e in self.elements:
+            for e in okno:
                 lines.append(
                     f'  [{e.index}] {e.kind} "{_short(e.name, 70)}" @ ({e.x}, {e.y}) {e.w}x{e.h}'
                 )
         else:
             lines.append("PRVKY: nepodařilo se přečíst (okno možná nepodporuje přístupnost)")
+
+        if panel:
+            lines.append("PRVKY V PANELU ÚLOH (ikony aplikací dole):")
+            for e in panel:
+                lines.append(
+                    f'  [{e.index}] {e.kind} "{_short(e.name, 70)}" @ ({e.x}, {e.y}) {e.w}x{e.h}'
+                )
 
         return "\n".join(lines)
 
@@ -150,6 +162,7 @@ def list_windows() -> list[dict]:
                     {
                         "title": title,
                         "class": w.ClassName,
+                        "hwnd": getattr(w, "NativeWindowHandle", 0),
                         "x": r.left,
                         "y": r.top,
                         "w": r.right - r.left,
@@ -193,14 +206,17 @@ def _renderer_roots(hwnd: int) -> list:
     return roots
 
 
-def _collect(roots: list, cfg, deadline: float) -> list[Element]:
+def _collect(
+    roots: list, cfg, deadline: float, start_index: int = 1, limit: int | None = None
+) -> list[Element]:
     """Projde stromy oken do šířky, aby se stihla vrchní úroveň."""
+    maximum = limit if limit is not None else cfg.max_elements
     out: list[Element] = []
     seen: set[tuple] = set()
     queue: list[tuple[object, int]] = [(root, 0) for root in roots]
     cursor = 0
 
-    while cursor < len(queue) and len(out) < cfg.max_elements:
+    while cursor < len(queue) and len(out) < maximum:
         if time.monotonic() > deadline:
             break
         node, depth = queue[cursor]
@@ -232,7 +248,7 @@ def _collect(roots: list, cfg, deadline: float) -> list[Element]:
 
             out.append(
                 Element(
-                    index=len(out) + 1,
+                    index=start_index + len(out),
                     kind=kind,
                     name=name,
                     x=r.left,
@@ -242,7 +258,7 @@ def _collect(roots: list, cfg, deadline: float) -> list[Element]:
                     control=child,
                 )
             )
-            if len(out) >= cfg.max_elements:
+            if len(out) >= maximum:
                 break
 
     return out
@@ -299,7 +315,50 @@ def _snapshot(cfg) -> Snapshot:
     if cfg.include_all_windows:
         snap.windows = list_windows()
 
+    # Panel úloh je samostatné okno, takže v aktivním okně nikdy není.
+    # Bez tohohle nejde kliknout na ikonu aplikace v liště.
+    try:
+        panel = _taskbar_control(snap.windows)
+        if panel is not None:
+            snap.taskbar_from = len(snap.elements) + 1
+            deadline = time.monotonic() + cfg.ui_budget_seconds
+            snap.elements.extend(
+                _collect(
+                    [panel],
+                    cfg,
+                    deadline,
+                    start_index=snap.taskbar_from,
+                    limit=cfg.max_taskbar_elements,
+                )
+            )
+    except Exception:
+        pass
+
     return snap
+
+
+def _taskbar_control(okna: list[dict]):
+    """Najde okno panelu úloh mezi otevřenými okny."""
+    import ctypes
+
+    for okno in okna:
+        if okno.get("class") in ("Shell_TrayWnd", "Shell_SecondaryTrayWnd"):
+            hwnd = okno.get("hwnd") or 0
+            if not hwnd:
+                hwnd = ctypes.windll.user32.FindWindowW("Shell_TrayWnd", None)
+            if hwnd:
+                try:
+                    return auto.ControlFromHandle(hwnd)
+                except Exception:
+                    continue
+
+    hwnd = ctypes.windll.user32.FindWindowW("Shell_TrayWnd", None)
+    if hwnd:
+        try:
+            return auto.ControlFromHandle(hwnd)
+        except Exception:
+            return None
+    return None
 
 
 def screenshot(name: str = "screen") -> Path:
