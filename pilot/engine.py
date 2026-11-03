@@ -253,6 +253,10 @@ class Engine:
         self._answer(text, obrazovka.get("snap"))
 
     def _answer(self, text: str, snap=None) -> None:
+        if getattr(self.cfg, "use_vision", True):
+            self._answer_vision(text)
+            return
+
         self._busy = True
         t0_modelu = time.monotonic()
         try:
@@ -283,6 +287,108 @@ class Engine:
             return
 
         self._run_plan(plan, snap, reply.say, text)
+
+    def _citac(self):
+        if getattr(self, "_vision_citac", None) is None:
+            from .vision import Citac
+
+            self._vision_citac = Citac(self.cfg)
+        return self._vision_citac
+
+    def _answer_vision(self, text: str) -> None:
+        """Kolo přes screenshot: model vidí obrazovku a vrací souřadnice."""
+        from . import vision
+
+        self._busy = True
+        citac = self._citac()
+        provedene: list[str] = []
+        posledni_say = ""
+        self._emit({"type": "control", "on": True})
+
+        for krok in range(1, self.cfg.max_steps + 1):
+            try:
+                obraz = vision.snimek()
+                self._emit(
+                    {"type": "screen", "elements": 0, "window": f"snímek {obraz.popis}"}
+                )
+                vyzva = self.brain.vision_prompt(text, provedene, obraz)
+                raw = citac.zeptej_se(vyzva, obraz)
+                plan = actions.parse(raw)
+            except Exception as exc:
+                self._fail(f"Vision selhal: {exc}")
+                return
+
+            if plan.error:
+                self._log(f"Plán neprošel: {plan.error}", "error")
+                break
+
+            if not plan.actions:
+                self._emit({"type": "answer", "text": plan.say})
+                posledni_say = plan.say
+                break
+
+            # souřadnice z obrázku na skutečnou obrazovku
+            for akce in plan.actions:
+                if akce.x is not None and akce.y is not None:
+                    akce.x, akce.y = obraz.na_obrazovku(akce.x, akce.y)
+
+            prazdno = eyes.Snapshot()
+            popis = actions.describe(plan, prazdno)
+            nebezpecna = any(a.je_nebezpecna() for a in plan.actions)
+
+            self._emit(
+                {
+                    "type": "plan",
+                    "say": plan.say,
+                    "description": popis,
+                    "destructive": nebezpecna,
+                    "step": krok,
+                }
+            )
+
+            if nebezpecna:
+                self._set_state(THINKING, "čekám na potvrzení")
+                self._speak(f"Pozor, tohle se nedá vzít zpět: {popis}. Potvrdit?")
+                try:
+                    potvrzeno = bool(self.confirmer(popis, True))
+                except Exception:
+                    potvrzeno = False
+                if not potvrzeno:
+                    self._emit({"type": "executed", "results": [], "cancelled": True})
+                    self._speak("Zrušeno.")
+                    self._done()
+                    return
+
+            vysledky: list[str] = []
+            for akce in plan.actions:
+                try:
+                    vysledky.append(actions.execute(akce, prazdno))
+                    provedene.append(vysledky[-1])
+                    time.sleep(0.25)
+                except Exception as exc:
+                    vysledky.append(f"chyba: {exc}")
+                    break
+
+            vsechno = len(vysledky) == len(plan.actions)
+            self._emit(
+                {
+                    "type": "executed",
+                    "results": vysledky,
+                    "cancelled": False,
+                    "ok": vsechno,
+                }
+            )
+
+            if plan.say:
+                posledni_say = plan.say
+            if plan.done or not vsechno:
+                break
+
+            time.sleep(0.2)
+
+        if posledni_say:
+            self._speak(posledni_say)
+        self._done()
 
     def _run_plan(self, plan, snap, say: str, cil_ukolu: str = "") -> None:
         """Smyčka k cíli: proveď krok, podívej se znovu, rozhodni další.

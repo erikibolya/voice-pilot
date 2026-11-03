@@ -38,6 +38,9 @@ class Config:
     speech_rate: str = "+0%"
 
     # --- Oči: UI Automation ---
+    # cist obrazovku ze screenshotu (vision) misto UI Automation
+    use_vision: bool = True
+
     max_elements: int = 70
     max_taskbar_elements: int = 60
     max_web_elements: int = 60
