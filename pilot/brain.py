@@ -95,26 +95,34 @@ class Brain:
 
     # ---------------------------------------------------------- vision
 
-    def vision_prompt(self, cil: str, provedeno: list[str], obraz) -> str:
-        """Výzva k modelu, který se dívá na screenshot."""
+    def vision_prompt(self, cil: str, provedeno: list[str], obrazky) -> str:
+        """Výzva k modelu, který se dívá na screenshoty monitorů."""
+        if not isinstance(obrazky, list):
+            obrazky = [obrazky]
+
+        prehled = "\n".join(
+            f"  monitor {o.monitor}: {o.sirka}x{o.vyska} px" for o in obrazky
+        )
+
         radky = [
             "ODPOVÍDEJ POUZE JSON. Nepiš své uvažování, nekomentuj, nepopisuj, co vidíš.",
             "",
             "Jsi Pilot, hlasový asistent, který ovládá český Windows. Díváš se na screenshot obrazovky.",
             "",
-            f"Snímek: {obraz.popis}. Souřadnice vracej v TĚCHTO pixelech,"
-            " počátek 0,0 je levý horní roh obrázku.",
-            "Vidíš jen tenhle jeden monitor. Jiná okna mohou být na jiném —"
-            " když je úkol o nich, řekni to v say a nedělej akci.",
+            "Dostáváš snímek každého monitoru:",
+            prehled,
+            "",
+            "U každé akce uveď ČÍSLO MONITORU a souřadnice v pixelech jeho snímku.",
+            "Počátek 0,0 je levý horní roh snímku toho monitoru.",
             "",
             'Odpověz POUZE jedním JSON objektem, bez textu okolo:',
             '{"say": "", "actions": [], "done": false}',
             "",
             "Akce (u kliknutí vždy x a y):",
-            '  {"type": "click",        "x": 400, "y": 300}',
-            '  {"type": "double_click", "x": 400, "y": 300}',
-            '  {"type": "right_click",  "x": 400, "y": 300}',
-            '  {"type": "type",         "x": 400, "y": 300, "text": "co napsat"}',
+            '  {"type": "click",        "monitor": 2, "x": 400, "y": 300}',
+            '  {"type": "double_click", "monitor": 2, "x": 400, "y": 300}',
+            '  {"type": "right_click",  "monitor": 2, "x": 400, "y": 300}',
+            '  {"type": "type",         "monitor": 2, "x": 400, "y": 300, "text": "co napsat"}',
             '  {"type": "key",          "keys": "alt+f4"}',
             '  {"type": "close",        "title": "Discord"}',
             "",

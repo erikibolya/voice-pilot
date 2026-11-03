@@ -58,6 +58,7 @@ class Action:
     title: str = ""
     x: int | None = None
     y: int | None = None
+    monitor: int | None = None
 
     @classmethod
     def from_dict(cls, data: object) -> "Action":
@@ -102,6 +103,7 @@ class Action:
             title=title,
             x=int(data["x"]) if data.get("x") is not None else None,
             y=int(data["y"]) if data.get("y") is not None else None,
+            monitor=int(data["monitor"]) if data.get("monitor") is not None else None,
         )
 
     def je_nebezpecna(self, element: Element | None = None) -> bool:

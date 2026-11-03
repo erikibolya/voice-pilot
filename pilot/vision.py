@@ -130,6 +130,41 @@ def _monitor_okna(hwnd: int) -> dict:
     return {"left": r.left, "top": r.top, "width": r.right - r.left, "height": r.bottom - r.top}
 
 
+def _zachyt(oblast: dict, poradi: int, celkem: int) -> Snimek:
+    import mss
+    from PIL import Image
+
+    with mss.mss() as sct:
+        raw = sct.grab(oblast)
+
+    obrazek = Image.frombytes("RGB", raw.size, raw.rgb)
+    scale = max(1.0, raw.width / MAX_SIRKA)
+    if scale > 1.0:
+        obrazek = obrazek.resize(
+            (int(raw.width / scale), int(raw.height / scale)), Image.LANCZOS
+        )
+
+    buf = io.BytesIO()
+    obrazek.save(buf, format="JPEG", quality=KVALITA)
+
+    return Snimek(
+        data=buf.getvalue(),
+        sirka=obrazek.width,
+        vyska=obrazek.height,
+        offset_x=oblast["left"],
+        offset_y=oblast["top"],
+        scale=scale,
+        monitor=poradi,
+        monitoru=celkem,
+    )
+
+
+def snimky() -> list[Snimek]:
+    """Snímek každého monitoru — model tak vidí celou plochu."""
+    vsechny = monitory()
+    return [_zachyt(o, i + 1, len(vsechny)) for i, o in enumerate(vsechny)]
+
+
 def snimek() -> Snimek:
     """Zachytí monitor s aktivním oknem a zmenší ho."""
     import ctypes
@@ -209,23 +244,27 @@ class Citac:
 
     # ------------------------------------------------------------- dotaz
 
-    def zeptej_se(self, vyzva: str, obraz: Snimek, timeout: float = 40.0) -> str:
+    def zeptej_se(self, vyzva: str, obrazky, timeout: float = 60.0) -> str:
         if self._session is None:
             self._session = self._vytvor_session()
 
+        if not isinstance(obrazky, list):
+            obrazky = [obrazky]
+
         self._soubor.parent.mkdir(parents=True, exist_ok=True)
-        self._soubor.write_bytes(obraz.data)
-        uri = self._soubor.as_uri()
+        soubory = []
+        for i, obraz in enumerate(obrazky, start=1):
+            cesta = self._soubor.with_name(f"voice-pilot-vision-{i}.jpg")
+            cesta.write_bytes(obraz.data)
+            uri = cesta.as_uri()
+            soubory.append(
+                {"uri": uri, "source": {"type": "uri", "uri": uri}, "name": f"monitor-{i}.jpg"}
+            )
 
         r = self._http.post(
             f"{self.cfg.service_url}/api/session/{self._session}/prompt",
             auth=self._auth(),
-            json={
-                "text": vyzva,
-                "files": [
-                    {"uri": uri, "source": {"type": "uri", "uri": uri}, "name": "screen.jpg"}
-                ],
-            },
+            json={"text": vyzva, "files": soubory},
         )
         r.raise_for_status()
 
