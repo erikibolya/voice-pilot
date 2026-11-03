@@ -110,3 +110,18 @@ Projde mikrofon → Whisper → UI Automation → model → reproduktory a vypí
 3. `run.py --say "test"` — ozve se český hlas.
 4. `run.py --look` — popis sedí na to, co máš na obrazovce.
 5. `run.py` — F9 nahraje, F9 odešle, odpověď se ozve.
+
+## Diktovací režim (přepínač)
+
+| Funkce | Test | Poznámka |
+|---|---|---|
+| **Přepínač zapne a vypne jedním stiskem** | `test_prepinac_zapne_a_vypne_jednim_stisknutim` | F9 = režim, ne nahrávka |
+| Puštění klávesy nic nedělá | `test_prepinac_neresi_pusteni` | |
+| Injektovaná klávesa se ignoruje | `test_prepinac_ignoruje_injektovane` | i v přepínači |
+
+## Co testy záměrně nepokrývají (diktování)
+
+- **Dělení vět tichem.** Potřebuje skutečný mikrofon a řeč. Ověřuje se ručně:
+  zapnout F9, mluvit dvě věty s pauzou, sledovat, že přijdou dvě kola.
+- **Latence mezi větou a akcí.** Závisí na Whisperu a modelu; měří se v `gui.log`
+  v řádku `kolo: přepis … · model … · první zvuk …`.
