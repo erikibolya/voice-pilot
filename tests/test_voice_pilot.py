@@ -1045,3 +1045,39 @@ def test_piper_nevyrobi_anglictinu_ceskym_modelem(cfg, tmp_path):
 
     with pytest.raises(TTSError, match="angličtin"):
         Speaker(nastaveni)._piper("hello")
+
+
+def test_abort_prerusi_smycku(cfg, monkeypatch):
+    """Uživatel musí mít jak úkol zastavit — Ctrl+Alt+Esc."""
+    from pilot.actions import Action, Plan
+
+    engine, provedeno = _engine_pro_smycku(
+        cfg,
+        monkeypatch,
+        [Plan(say="", actions=[Action(type="click", target=1)], done=False) for _ in range(20)],
+    )
+
+    puvodni = engine.brain.next_step
+
+    def po_prvnim(cil, proc, snap):
+        engine.abort()
+        return puvodni(cil, proc, snap)
+
+    monkeypatch.setattr(engine.brain, "next_step", po_prvnim)
+
+    engine.ask("dělej něco dlouho", background=False)
+
+    assert len(provedeno) <= 2, f"po přerušení se provedlo {len(provedeno)} akcí"
+    assert engine.state in ("idle", "listening")
+
+
+def test_abort_zhasne_prekryv_kdyz_nic_nebezi(cfg, monkeypatch):
+    from pilot.engine import Engine
+
+    udalosti: list[dict] = []
+    engine = Engine(cfg, on_event=udalosti.append)
+    engine.abort()
+
+    assert any(
+        u.get("type") == "control" and u.get("on") is False for u in udalosti
+    ), "přerušení má zhasnout překryv"

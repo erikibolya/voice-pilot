@@ -61,7 +61,15 @@ def run(cfg) -> int:
     keys.started.connect(engine.start_dictation)
     keys.stopped.connect(engine.stop_dictation)
     keys.confirm.connect(lambda: confirmer.answer(True))
-    keys.cancel.connect(lambda: confirmer.answer(False))
+
+    def zrus() -> None:
+        """Ctrl+Alt+Esc: zruší čekající potvrzení, jinak přeruší celý úkol."""
+        if confirmer.pending:
+            confirmer.answer(False)
+        else:
+            engine.abort()
+
+    keys.cancel.connect(zrus)
 
     diktovani = {"zapnuto": False}
 

@@ -51,6 +51,7 @@ class Engine:
         self._diktovani = None
         self.speak_replies = True
         self.on_level = None
+        self._prerusit_ukol = False
 
         # Kdo potvrzuje akce. Výchozí je "ne" — bez obsluhy se nic neprovede.
         self.confirmer: Callable[[str, bool], bool] = lambda popis, nebezpecna: False
@@ -128,6 +129,20 @@ class Engine:
     @property
     def diktuje(self) -> bool:
         return self._diktovani is not None
+
+    def abort(self) -> None:
+        """Přeruší běžící úkol: zastaví hlas, smyčku i překryv."""
+        self._prerusit_ukol = True
+        try:
+            self.speaker.stop()
+        except Exception:
+            pass
+        self._log("Přerušeno.", "warn")
+
+        if not self._busy:
+            # nic neběží, tak aspoň zhasni překryv
+            self._emit({"type": "control", "on": False})
+            self._set_state(LISTENING if self._diktovani else IDLE)
 
     def _uroven(self, hodnota: float) -> None:
         if self.on_level is not None:
@@ -279,10 +294,14 @@ class Engine:
         posledni_say = ""
         posledni_popis = ""
         opakovani = 0
+        self._prerusit_ukol = False
 
         self._emit({"type": "control", "on": True})
 
         for krok in range(1, self.cfg.max_steps + 1):
+            if self._prerusit_ukol:
+                self._log("Úkol přerušen.", "warn")
+                break
             if not plan.actions:
                 break
 
@@ -355,6 +374,9 @@ class Engine:
             )
 
             if not vsechno or plan.done:
+                break
+            if self._prerusit_ukol:
+                self._log("Úkol přerušen.", "warn")
                 break
             if krok >= self.cfg.max_steps:
                 self._log(f"Vyčerpán rozpočet {self.cfg.max_steps} kroků.", "warn")
