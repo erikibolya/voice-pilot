@@ -216,54 +216,81 @@ class ControlFrame(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         sirka, vyska = self.width(), self.height()
-        pulz = 0.55 + 0.25 * math.sin(self._faze)
+        pulz = 0.55 + 0.35 * math.sin(self._faze)
 
-        # vnější záře — několik průhledných rámů
-        for i, tloustka in enumerate((18, 12, 7)):
-            barva = QColor(c["accent"])
-            barva.setAlphaF(0.10 * (3 - i) * pulz)
-            pero = QPen(barva, tloustka)
-            painter.setPen(pero)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(
-                QRectF(tloustka / 2 + 1, tloustka / 2 + 1,
-                       sirka - tloustka - 2, vyska - tloustka - 2),
-                14, 14,
-            )
+        # ---------- barevný inset shadow po stranách ----------
+        barva = QColor("#7c5cff")          # fialovomodrá, čitelná v obou režimech
+        hloubka = 170
+        sila = 0.34 * (0.75 + 0.25 * pulz)
 
-        # ostrá linka
-        barva = QColor(c["accent"])
-        barva.setAlphaF(0.85)
-        painter.setPen(QPen(barva, 2))
-        painter.drawRoundedRect(QRectF(2, 2, sirka - 4, vyska - 4), 12, 12)
+        def prechod(x0: float, y0: float, x1: float, y1: float) -> QLinearGradient:
+            g = QLinearGradient(x0, y0, x1, y1)
+            vnitrni = QColor(barva)
+            vnitrni.setAlphaF(sila)
+            vnejsi = QColor(barva)
+            vnejsi.setAlphaF(0.0)
+            g.setColorAt(0.0, vnitrni)
+            g.setColorAt(1.0, vnejsi)
+            return g
 
-        # štítek nahoře uprostřed
-        text = "PILOT OVLÁDÁ POČÍTAČ"
-        font = QFont(c["font"], 9)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(prechod(0, 0, 0, hloubka))
+        painter.drawRect(QRectF(0, 0, sirka, hloubka))
+
+        painter.setBrush(prechod(0, vyska, 0, vyska - hloubka))
+        painter.drawRect(QRectF(0, vyska - hloubka, sirka, hloubka))
+
+        painter.setBrush(prechod(0, 0, hloubka, 0))
+        painter.drawRect(QRectF(0, 0, hloubka, vyska))
+
+        painter.setBrush(prechod(sirka, 0, sirka - hloubka, 0))
+        painter.drawRect(QRectF(sirka - hloubka, 0, hloubka, vyska))
+
+        # jemná linka po obvodu, ať je okraj čitelný i na světlé ploše
+        obrys = QColor(barva)
+        obrys.setAlphaF(0.5)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(obrys, 2))
+        painter.drawRoundedRect(QRectF(3, 3, sirka - 6, vyska - 6), 16, 16)
+
+        # ---------- chip uprostřed ----------
+        text = "AI is using your computer"
+        font = QFont(c["font"], 10)
         font.setBold(True)
-        font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.4)
         painter.setFont(font)
 
         metr = painter.fontMetrics()
         textova = metr.horizontalAdvance(text)
-        box_sirka = textova + 42
-        box_vyska = 30
-        box = QRectF((sirka - box_sirka) / 2, 10, box_sirka, box_vyska)
+        chip_w = textova + 62
+        chip_h = 38
+        cx = sirka / 2
+        cy = vyska * 0.42
+        chip = QRectF(cx - chip_w / 2, cy - chip_h / 2, chip_w, chip_h)
 
         pozadi = QColor(c["panel2"])
-        pozadi.setAlpha(240)
+        pozadi.setAlpha(244)
         painter.setBrush(pozadi)
-        painter.setPen(QPen(QColor(c["accent"]), 1))
-        painter.drawRoundedRect(box, 15, 15)
+        ram = QColor(barva)
+        ram.setAlphaF(0.9)
+        painter.setPen(QPen(ram, 1))
+        painter.drawRoundedRect(chip, chip_h / 2, chip_h / 2)
 
-        tecka = QPointF(box.left() + 16, box.center().y())
+        # pulzující tečka
+        stred = QPointF(chip.left() + 23, chip.center().y())
+        halo = QColor(barva)
+        halo.setAlphaF(0.22 + 0.28 * pulz)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(c["accent"]))
-        painter.drawEllipse(tecka, 4, 4)
+        painter.setBrush(halo)
+        painter.drawEllipse(stred, 9 + 3 * pulz, 9 + 3 * pulz)
+
+        plna = QColor(barva)
+        plna.setAlphaF(0.85 + 0.15 * pulz)
+        painter.setBrush(plna)
+        painter.drawEllipse(stred, 4.5, 4.5)
 
         painter.setPen(QColor(c["text"]))
         painter.drawText(
-            QRectF(box.left() + 28, box.top(), box_sirka - 32, box_vyska),
+            QRectF(chip.left() + 40, chip.top(), chip_w - 48, chip_h),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             text,
         )
