@@ -953,3 +953,42 @@ def test_hovor_je_nevratny(text):
 
     plan = Plan(say="x", actions=[Action(type="type", text=text)])
     assert plan.is_destructive
+
+
+def test_prazdne_say_se_necte_jako_json():
+    """Regrese: model vrátil 'say': '' a aplikace přečetla nahlas celý JSON."""
+    from pilot import actions
+
+    plan = actions.parse('{"say": "", "actions": [{"type": "click", "target": 42}], "done": false}')
+
+    assert plan.say == "", f"do hlasu se dostal: {plan.say!r}"
+    assert len(plan.actions) == 1
+    assert plan.actions[0].target == 42
+
+
+def test_prazdne_say_u_chybneho_planu():
+    from pilot import actions
+
+    plan = actions.parse('{"say": "", "actions": [{"type": "neexistuje"}]}')
+
+    assert plan.say == "", "ani u chyby se nesmí číst JSON"
+    assert plan.error
+
+
+def test_mezitimni_kroky_se_nemluvi(cfg, monkeypatch):
+    """Model nemá komentovat každý krok — mluví se až na konci."""
+    from pilot.actions import Action, Plan
+
+    receno: list[str] = []
+    engine, provedeno = _engine_pro_smycku(
+        cfg,
+        monkeypatch,
+        [Plan(say="Klikl jsem a přešel správně.", actions=[Action(type="click", target=3)], done=True)],
+    )
+    monkeypatch.setattr(engine, "_speak", lambda t: receno.append(t))
+
+    engine.ask("klikni", background=False)
+
+    assert provedeno == [1, 3]
+    assert receno == ["Klikl jsem a přešel správně."], receno
+    assert len(receno) == 1, "mluvit se má jen jednou, na konci"
