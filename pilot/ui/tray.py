@@ -17,6 +17,7 @@ class Tray(QSystemTrayIcon):
         from ..hotkey import popis
 
         self._popis = popis(engine.cfg.hotkey)
+        self._upozorneno = False
         self.setToolTip(f"voice-pilot — drž {self._popis} a mluv")
 
         menu = QMenu()
@@ -86,6 +87,22 @@ class Tray(QSystemTrayIcon):
         self._on_event(payload)
 
     def _on_event(self, payload: dict) -> None:
+        if payload.get("type") == "control":
+            if payload.get("on") and not self._upozorneno:
+                self._upozorneno = True
+                try:
+                    self.showMessage(
+                        "voice-pilot",
+                        "AI právě ovládá počítač.\nPřerušit: Ctrl+Alt+Esc",
+                        QSystemTrayIcon.MessageIcon.Information,
+                        4000,
+                    )
+                except Exception:
+                    pass
+            elif not payload.get("on"):
+                self._upozorneno = False
+            return
+
         if payload.get("type") != "state":
             return
         state = payload.get("value")

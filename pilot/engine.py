@@ -303,6 +303,8 @@ class Engine:
         citac = self._citac()
         provedene: list[str] = []
         posledni_say = ""
+        posledni_popis = ""
+        opakovani = 0
         self._emit({"type": "control", "on": True})
 
         for krok in range(1, self.cfg.max_steps + 1):
@@ -367,6 +369,15 @@ class Engine:
             prazdno = eyes.Snapshot()
             popis = actions.describe(plan, prazdno)
             nebezpecna = any(a.je_nebezpecna() for a in plan.actions)
+
+            # Když model navrhne podruhé totéž, obrazovka se nezměnila a on
+            # si myslí, že se nic nestalo. Šestkrát napsané „ahoj" je přesně
+            # tohle. Druhé stejné kolo ukončíme.
+            opakovani = opakovani + 1 if popis == posledni_popis else 0
+            if opakovani >= 1:
+                self._log("Stejný krok se opakuje — končím, ať to nedělám pořád dokola.", "warn")
+                break
+            posledni_popis = popis
 
             self._emit(
                 {
