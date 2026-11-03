@@ -217,6 +217,9 @@ def execute(action: Action, snap: Snapshot) -> str:
     if action.target is not None and element is None:
         raise ActionError(f"prvek [{action.target}] už na obrazovce není")
 
+    if element is not None and element.source == "web":
+        return _v_prohlizeci(action, element)
+
     if element is not None and element.source == "cdp":
         return _na_webu(action, element)
 
@@ -247,6 +250,28 @@ def execute(action: Action, snap: Snapshot) -> str:
         return f"rolováno {action.direction}"
 
     raise ActionError(f"akci {action.type} neumím provést")
+
+
+def _v_prohlizeci(action: Action, element: Element) -> str:
+    """Akce přes rozšíření v prohlížeči."""
+    from . import bridge
+
+    try:
+        if action.type in ("click", "double_click", "invoke", "focus"):
+            bridge.most().klik(element.cdp_index or 0, element.name, element.tab)
+            return f'kliknuto na „{element.name}“'
+
+        if action.type == "type":
+            bridge.most().napis(element.cdp_index or 0, action.text, element.tab)
+            return f'napsáno do „{element.name}“'
+
+        if action.type == "key" and action.keys.strip().lower() in ("enter", "return"):
+            bridge.most().stiskni("enter", element.tab)
+            return "stisknut Enter"
+
+        raise ActionError(f"v prohlížeči neumím {action.type}")
+    except bridge.BridgeError as exc:
+        raise ActionError(str(exc)) from exc
 
 
 def _na_webu(action: Action, element: Element) -> str:
