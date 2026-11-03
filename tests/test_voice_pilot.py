@@ -37,7 +37,7 @@ def test_config_se_ulozi_a_nacte(tmp_path, monkeypatch):
 
     again = config.load()
     assert again.model_id == "nejaky-model"
-    assert again.language == "cs"
+    assert again.language == "auto"
 
 
 def test_neznamy_klic_v_configu_neshodi_nacteni(tmp_path, monkeypatch):
@@ -1185,3 +1185,33 @@ def test_karta_se_vybere_podle_nazvu_okna(monkeypatch):
     assert cdp.tab_for_window("Gmail - Google Chrome") == "karta-b"
     assert cdp.tab_for_window("Facebook - Google Chrome") == "karta-a"
     assert cdp.tab_for_window("Průzkumník - Google Chrome") is None
+
+
+def test_automaticky_jazyk_prebere_hlas_z_rozpoznani(cfg, monkeypatch):
+    """Regrese: s vynucenou angličtinou Whisper přepsal češtinu jako nesmysl."""
+    from dataclasses import replace
+
+    from pilot.engine import VOZBY, Engine
+
+    engine = Engine(replace(cfg, language="auto"), on_event=lambda e: None)
+    engine.transcriber.last_language = "en"
+    engine._podle_jazyka()
+
+    assert engine.brain.override_language == "en"
+    assert engine.speaker.voice_override == VOZBY["en"]
+
+    engine.transcriber.last_language = "cs"
+    engine._podle_jazyka()
+    assert engine.speaker.voice_override == VOZBY["cs"]
+
+
+def test_vynuceny_jazyk_hlas_nemeni(cfg):
+    from dataclasses import replace
+
+    from pilot.engine import Engine
+
+    engine = Engine(replace(cfg, language="en", voice="en-US-GuyNeural"), on_event=lambda e: None)
+    engine.transcriber.last_language = "cs"
+    engine._podle_jazyka()
+
+    assert engine.speaker.voice_override is None, "při vynuceném jazyce se hlas neřídí detekcí"

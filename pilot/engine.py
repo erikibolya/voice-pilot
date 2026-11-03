@@ -166,6 +166,7 @@ class Engine:
             self._set_state(LISTENING, "diktuji")
             return
 
+        self._podle_jazyka()
         self._emit({"type": "heard", "text": text})
         self._answer(text, None)
 
@@ -239,6 +240,7 @@ class Engine:
             self._fail(f"Přepis selhal: {exc}")
             return
         self._cas_prepisu = time.monotonic() - t0
+        self._podle_jazyka()
         vlakno.join(timeout=self.cfg.ui_budget_seconds + 2)
 
         if not text:
@@ -432,6 +434,13 @@ class Engine:
             amount=akce.amount,
         )
 
+    def _podle_jazyka(self) -> None:
+        """Whisper poznal jazyk — podle něj nastav odpověď i hlas."""
+        jazyk = getattr(self.transcriber, "last_language", "cs") or "cs"
+        self.brain.override_language = jazyk
+        if getattr(self.cfg, "language", "auto") == "auto":
+            self.speaker.voice_override = VOZBY.get(jazyk, VOZBY["cs"])
+
     def _speak(self, text: str) -> None:
         if not self.speak_replies:
             return
@@ -492,6 +501,9 @@ class Engine:
             pass
         if self.mic.is_recording:
             self.mic.stop()
+
+
+VOZBY = {"cs": "cs-CZ-VlastaNeural", "en": "en-US-AriaNeural"}
 
 
 def _beep(frequency: int = 800, duration_ms: int = 70) -> None:

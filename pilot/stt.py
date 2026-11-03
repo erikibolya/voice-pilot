@@ -69,6 +69,7 @@ class Transcriber:
         self.cfg = cfg
         self._model = None
         self.device_used = ""
+        self.last_language = "cs"
 
     def prewarm(self) -> None:
         """Načte model. Blokuje — volající si ho má pustit ve vlákně."""
@@ -118,15 +119,23 @@ class Transcriber:
         # tichý mluvčí jinak ztrácí přesnost, takže nahrávku srovnáme.
         audio = normalize(audio)
 
-        segments, _info = self._load().transcribe(
+        jazyk = getattr(self.cfg, "language", "auto")
+        vynuceny = None if jazyk in ("auto", "", None) else jazyk
+
+        segments, info = self._load().transcribe(
             audio,
-            language=self.cfg.language,
+            language=vynuceny,
             beam_size=5,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 500},
             condition_on_previous_text=False,
         )
-        return " ".join(seg.text.strip() for seg in segments).strip()
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        if vynuceny is None and getattr(info, "language", None):
+            self.last_language = info.language
+        else:
+            self.last_language = vynuceny or "cs"
+        return text
 
 
 def _enable_cuda_dlls() -> None:
