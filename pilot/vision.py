@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import pathlib
 import time
 from dataclasses import dataclass
@@ -30,25 +31,85 @@ class Snimek:
     offset_x: int       # levý horní roh monitoru na ploše
     offset_y: int
     scale: float        # skutečný / zmenšený
+    monitor: int = 1    # kolikátý monitor z kolika
+    monitoru: int = 1
 
     def na_obrazovku(self, x: float, y: float) -> tuple[int, int]:
         return (int(self.offset_x + x * self.scale), int(self.offset_y + y * self.scale))
 
     @property
     def popis(self) -> str:
+        if self.monitoru > 1:
+            return f"{self.sirka}x{self.vyska} px (monitor {self.monitor} z {self.monitoru})"
         return f"{self.sirka}x{self.vyska} px"
 
 
+def monitory() -> list[dict]:
+    """Všechny monitory jako obdélníky v souřadnicích plochy."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    vysledek: list[dict] = []
+
+    @ctypes.WINFUNCTYPE(
+        wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC,
+        ctypes.POINTER(wintypes.RECT), wintypes.LPARAM,
+    )
+    def projdi(_hmon, _hdc, lprc, _lp):
+        r = lprc.contents
+        vysledek.append(
+            {"left": r.left, "top": r.top,
+             "width": r.right - r.left, "height": r.bottom - r.top}
+        )
+        return True
+
+    user32.EnumDisplayMonitors(0, 0, projdi, 0)
+    return vysledek
+
+
+def _je_nase_okno(hwnd: int) -> bool:
+    """Pozná okno voice-pilotu (podle názvu nebo podle procesu)."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+
+    delka = user32.GetWindowTextLengthW(hwnd)
+    if delka:
+        buf = ctypes.create_unicode_buffer(delka + 1)
+        user32.GetWindowTextW(hwnd, buf, delka + 1)
+        if "voice-pilot" in buf.value.lower():
+            return True
+
+    try:
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        return int(pid.value) == os.getpid()
+    except Exception:
+        return False
+
+
 def _monitor_okna(hwnd: int) -> dict:
-    """Monitor, na kterém leží aktivní okno."""
+    """Monitor, na kterém leží aktivní okno.
+
+    Když je vpředu naše vlastní okno, bereme monitor pod kurzorem —
+    jinak by se AI dívala sama na sebe.
+    """
     import ctypes
     from ctypes import wintypes
 
     user32 = ctypes.windll.user32
     rect = wintypes.RECT()
-    user32.GetWindowRect(hwnd, ctypes.byref(rect))
-    stred_x = (rect.left + rect.right) // 2
-    stred_y = (rect.top + rect.bottom) // 2
+
+    if hwnd and _je_nase_okno(hwnd):
+        bod = wintypes.POINT()
+        user32.GetCursorPos(ctypes.byref(bod))
+        stred_x, stred_y = bod.x, bod.y
+    else:
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        stred_x = (rect.left + rect.right) // 2
+        stred_y = (rect.top + rect.bottom) // 2
 
     class MONITORINFO(ctypes.Structure):
         _fields_ = [
@@ -93,6 +154,13 @@ def snimek() -> Snimek:
     buf = io.BytesIO()
     obrazek.save(buf, format="JPEG", quality=KVALITA)
 
+    vsechny = monitory()
+    poradi = next(
+        (i + 1 for i, m in enumerate(vsechny)
+         if m["left"] == oblast["left"] and m["top"] == oblast["top"]),
+        1,
+    )
+
     return Snimek(
         data=buf.getvalue(),
         sirka=obrazek.width,
@@ -100,6 +168,8 @@ def snimek() -> Snimek:
         offset_x=oblast["left"],
         offset_y=oblast["top"],
         scale=scale,
+        monitor=poradi,
+        monitoru=max(1, len(vsechny)),
     )
 
 
