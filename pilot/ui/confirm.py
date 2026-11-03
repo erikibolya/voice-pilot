@@ -36,6 +36,10 @@ class Confirmer(QObject):
         self._result = False
         self._pending = False
 
+    @property
+    def pending(self) -> bool:
+        return self._pending
+
     def ask(self, description: str, destructive: bool) -> bool:
         """Volá se z pracovního vlákna — počká na odpověď z hlavního."""
         self._result = False

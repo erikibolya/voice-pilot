@@ -295,6 +295,18 @@ class ControlFrame(QWidget):
             text,
         )
 
+        # nápověda, jak to přerušit
+        hint_font = QFont(c["font"], 8)
+        painter.setFont(hint_font)
+        hinta = QColor(c["muted"])
+        hinta.setAlphaF(0.0 + 0.85 * (0.6 + 0.4 * pulz))
+        painter.setPen(hinta)
+        painter.drawText(
+            QRectF(cx - 200, chip.bottom() + 6, 400, 18),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            "Přerušit: Ctrl+Alt+Esc",
+        )
+
         painter.end()
 
 
