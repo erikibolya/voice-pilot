@@ -285,23 +285,19 @@ class Speaker:
                 pass
 
     def prewarm(self) -> None:
-        """Načte model Piperu na pozadí, aby první odpověď nečekala 3,7 s."""
+        """Načte model Piperu. Blokuje — volající si ho má pustit ve vlákně."""
         if self.cfg.tts_engine not in ("piper", "auto"):
             return
-
-        def nacti() -> None:
-            try:
-                model = Path(self.cfg.piper_model) if self.cfg.piper_model else _default_piper()
-                if not model.exists():
-                    return
-                root = espeak_data_root()
-                if root is not None:
-                    os.environ["ESPEAK_DATA_PATH"] = str(root)
-                _piper_voice(model)
-            except Exception:
-                pass
-
-        threading.Thread(target=nacti, daemon=True).start()
+        try:
+            model = Path(self.cfg.piper_model) if self.cfg.piper_model else _default_piper()
+            if not model.exists():
+                return
+            root = espeak_data_root()
+            if root is not None:
+                os.environ["ESPEAK_DATA_PATH"] = str(root)
+            _piper_voice(model)
+        except Exception:
+            pass
 
     # ---------- výroba jednoho souboru ----------
 
@@ -345,6 +341,12 @@ class Speaker:
         if not model.exists():
             raise TTSError(
                 f"Piper model nenalezen ({model}). Spusť: python run.py --setup-piper"
+            )
+
+        if self.cfg.language == "en" and "cs_CZ" in model.name:
+            raise TTSError(
+                "Piper má stažený jen český hlas. Pro angličtinu přepni na "
+                "edge-tts, nebo si stáhni anglický model Piperu."
             )
 
         root = espeak_data_root()

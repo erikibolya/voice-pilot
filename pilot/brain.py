@@ -51,6 +51,9 @@ se mezi kroky změní. Když je cíl splněný, dej "done": true.
 """
 
 
+JAZYK_NAZEV = {"cs": "čeština", "en": "angličtina"}
+
+
 @dataclass
 class Reply:
     say: str
@@ -64,6 +67,9 @@ class Brain:
             cfg.service_url, cfg.service_password_file, cfg.provider_id, cfg.model_id
         )
         self.history: list[tuple[str, str]] = []
+
+    def _jazyk(self) -> str:
+        return JAZYK_NAZEV.get(getattr(self.cfg, "language", "cs"), "čeština")
 
     def look_and_answer(self, utterance: str, snap: eyes.Snapshot | None = None) -> Reply:
         snap = snap or eyes.snapshot(self.cfg)
@@ -84,6 +90,8 @@ class Brain:
         """Další krok k cíli — po provedení předchozího a novém snímku."""
         parts = [
             SYSTEM,
+            "",
+            f"Jazyk odpovědi: {self._jazyk()}. V tom jazyce piš i 'say'.",
             "",
             "--- ÚKOL ---",
             goal,
@@ -108,7 +116,14 @@ class Brain:
     # ---------- vnitřní ----------
 
     def _build_prompt(self, utterance: str, snap: eyes.Snapshot) -> str:
-        parts = [SYSTEM, "", "--- CO JE PRÁVĚ TEĎ NA OBRAZOVCE ---", snap.render()]
+        parts = [
+            SYSTEM,
+            "",
+            f"Jazyk odpovědi: {self._jazyk()}. V tom jazyce piš i 'say'.",
+            "",
+            "--- CO JE PRÁVĚ TEĎ NA OBRAZOVCE ---",
+            snap.render(),
+        ]
 
         if self.history:
             parts.append("")

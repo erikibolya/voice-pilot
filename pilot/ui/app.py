@@ -88,10 +88,21 @@ def run(cfg) -> int:
     engine.on_level = overlays.level
     bridge.event.connect(prekryvy)
 
-    # model hlasu se načte dřív, než ho bude potřeba
-    engine.speaker.prewarm()
-    # a Whisper taky — jinak první dotaz platí ~4,5 s navíc
-    engine.transcriber.prewarm()
+    # Oba modely se načítají v jednom vlákně a popořadě: Whisper i Piper
+    # inicializují CUDA/DLL a souběžně to umí shodit proces.
+    def prehrej() -> None:
+        try:
+            engine.transcriber.prewarm()
+        except Exception:
+            pass
+        try:
+            engine.speaker.prewarm()
+        except Exception:
+            pass
+
+    import threading
+
+    threading.Thread(target=prehrej, daemon=True).start()
 
     watcher = HotkeyWatcher(cfg.hotkey, keys.started.emit, keys.stopped.emit)
     started = watcher.start()
