@@ -1430,24 +1430,61 @@ def test_monitory_se_najdou():
         assert m["width"] > 0 and m["height"] > 0
 
 
-def test_popis_snimku_vi_kolikaty_monitor():
-    from pilot.vision import Snimek
-
-    jeden = Snimek(data=b"", sirka=1920, vyska=1080, offset_x=0, offset_y=0, scale=1.0)
-    assert "monitor" not in jeden.popis
-
-    treti = Snimek(data=b"", sirka=1920, vyska=1080, offset_x=1920, offset_y=0,
-                   scale=1.0, monitor=3, monitoru=3)
-    assert "monitor 3 z 3" in treti.popis
-
-
-def test_vision_prompt_zmini_ze_vidi_jen_jeden_monitor(cfg):
+def test_vision_posle_snimek_kazdeho_monitoru(cfg, monkeypatch):
+    """Regrese: model videl jen jeden monitor a Telegram na jinem nenasel."""
+    from pilot import vision
     from pilot.brain import Brain
-    from pilot.vision import Snimek
 
-    obraz = Snimek(data=b"", sirka=1920, vyska=1080, offset_x=1920, offset_y=0,
-                   scale=1.0, monitor=2, monitoru=3)
-    vyzva = Brain(replace(cfg, use_vision=True)).vision_prompt("co je na obrazovce", [], obraz)
+    obrazky = [
+        vision.Snimek(data=b"a", sirka=1920, vyska=1080, offset_x=-1920, offset_y=0,
+                      scale=1.0, monitor=1, monitoru=3),
+        vision.Snimek(data=b"b", sirka=1920, vyska=1080, offset_x=1920, offset_y=0,
+                      scale=1.0, monitor=2, monitoru=3),
+        vision.Snimek(data=b"c", sirka=1920, vyska=1080, offset_x=0, offset_y=0,
+                      scale=1.0, monitor=3, monitoru=3),
+    ]
+    brain = Brain(replace(cfg, use_vision=True))
+    vyzva = brain.vision_prompt("minimalizuj telegram", [], obrazky)
 
-    assert "monitor 2 z 3" in vyzva
-    assert "jiném" in vyzva
+    assert "monitor 1" in vyzva
+    assert "monitor 2" in vyzva
+    assert "monitor 3" in vyzva
+    assert "ČÍSLO MONITORU" in vyzva
+
+
+def test_akce_vi_na_kterem_monitoru_je():
+    from pilot import actions
+
+    plan = actions.parse(
+        '{"say":"","actions":[{"type":"click","monitor":2,"x":100,"y":200}]}'
+    )
+    assert plan.actions[0].monitor == 2
+
+
+def test_neznamy_monitor_se_neklikne(cfg, monkeypatch):
+    from pilot import actions as act
+    from pilot import vision
+    from pilot.engine import Engine
+
+    obrazky = [
+        vision.Snimek(data=b"a", sirka=1920, vyska=1080, offset_x=0, offset_y=0,
+                      scale=1.0, monitor=1, monitoru=1)
+    ]
+    monkeypatch.setattr(vision, "snimky", lambda: obrazky)
+
+    json_odpoved = '{"say":"","actions":[{"type":"click","monitor":9,"x":100,"y":200}],"done":false}'
+
+    class FalesnyCitac:
+        def zeptej_se(self, vyzva, obrazky, timeout=60.0):
+            return json_odpoved
+
+    provedeno = []
+    monkeypatch.setattr(act, "execute", lambda a, s: provedeno.append(a) or "ok")
+
+    engine = Engine(replace(cfg, use_vision=True), on_event=lambda e: None)
+    engine.speaker.say = lambda t: None
+    monkeypatch.setattr(engine, "_citac", lambda: FalesnyCitac())
+
+    engine.ask("klikni", background=False)
+
+    assert provedeno == [], "monitor 9 neexistuje, nesmí se klikat"

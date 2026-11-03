@@ -309,12 +309,16 @@ class Engine:
 
         for krok in range(1, self.cfg.max_steps + 1):
             try:
-                obraz = vision.snimek()
+                obrazky = vision.snimky()
                 self._emit(
-                    {"type": "screen", "elements": 0, "window": f"snímek {obraz.popis}"}
+                    {
+                        "type": "screen",
+                        "elements": 0,
+                        "window": f"{len(obrazky)} monitorů",
+                    }
                 )
-                vyzva = self.brain.vision_prompt(text, provedene, obraz)
-                raw = citac.zeptej_se(vyzva, obraz)
+                vyzva = self.brain.vision_prompt(text, provedene, obrazky)
+                raw = citac.zeptej_se(vyzva, obrazky)
                 plan = actions.parse(raw)
             except Exception as exc:
                 self._fail(f"Vision selhal: {exc}")
@@ -332,8 +336,8 @@ class Engine:
                         'Odpověz POUZE jedním JSON objektem, bez uvažování a bez textu okolo:\n'
                         '{"say": "", "actions": [], "done": false}\n'
                         f'Úkol: {text}\n'
-                        f'Obrázek má {obraz.sirka}x{obraz.vyska} px, souřadnice v těchto pixelech.',
-                        obraz,
+                        "U každé akce uveď číslo monitoru a souřadnice v pixelech jeho snímku.",
+                        obrazky,
                     )
                     plan = actions.parse(raw)
                 except Exception as exc:
@@ -349,11 +353,23 @@ class Engine:
                 posledni_say = plan.say
                 break
 
-            # souřadnice z obrázku na skutečnou obrazovku; mimo obrázek = neklikat
+            # souřadnice ze snímku daného monitoru na skutečnou obrazovku;
+            # mimo obrázek nebo neznámý monitor = neklikat
             mimo = None
             for akce in plan.actions:
                 if akce.x is None or akce.y is None:
                     continue
+                obraz = next(
+                    (o for o in obrazky if o.monitor == (akce.monitor or 1)), None
+                )
+                if obraz is None:
+                    mimo = (akce.x, akce.y)
+                    self._log(
+                        f"Model chce monitor {akce.monitor}, ale vidí jen "
+                        f"{[o.monitor for o in obrazky]} — neklikám.",
+                        "error",
+                    )
+                    break
                 if not (0 <= akce.x < obraz.sirka and 0 <= akce.y < obraz.vyska):
                     mimo = (akce.x, akce.y)
                     break
@@ -361,7 +377,7 @@ class Engine:
 
             if mimo is not None:
                 self._log(
-                    f"Souřadnice ({mimo[0]}, {mimo[1]}) jsou mimo snímek {obraz.popis} — neklikám.",
+                    f"Souřadnice ({mimo[0]}, {mimo[1]}) nesedí na žádný snímek — neklikám.",
                     "error",
                 )
                 break
