@@ -13,6 +13,8 @@ import miniaudio
 import numpy as np
 import pytest
 
+from dataclasses import replace
+
 from pilot import config, eyes
 from pilot.config import Config
 
@@ -382,7 +384,7 @@ def test_cely_kolo_od_otazky_k_odpovedi(cfg, monkeypatch):
 def test_kolo_se_uklidí_po_dokonceni(cfg, monkeypatch):
     from pilot.engine import Engine
 
-    engine = Engine(cfg, on_event=lambda e: None)
+    engine = Engine(replace(cfg, use_vision=False), on_event=lambda e: None)
     monkeypatch.setattr(engine.speaker, "say", lambda text: None)
 
     engine.ask("Co je na obrazovce?", background=False)
@@ -560,7 +562,7 @@ def _engine_pro_akce(cfg, monkeypatch, confirmer, target: int = 1):
 
     from pilot.engine import Engine
 
-    engine = Engine(cfg, on_event=lambda e: None)
+    engine = Engine(replace(cfg, use_vision=False), on_event=lambda e: None)
     monkeypatch.setattr(engine.speaker, "say", lambda t: None)
     monkeypatch.setattr(
         engine.brain, "look_and_answer", lambda text, snap: _reply_s_akci(target)
@@ -619,7 +621,7 @@ def test_nebezpecna_akce_se_oznaci(cfg, monkeypatch):
     from pilot.brain import Reply
     from pilot.engine import Engine
 
-    engine = Engine(cfg, on_event=lambda e: None)
+    engine = Engine(replace(cfg, use_vision=False), on_event=lambda e: None)
     monkeypatch.setattr(engine.speaker, "say", lambda t: None)
     monkeypatch.setattr(
         engine.brain,
@@ -645,7 +647,7 @@ def test_chybny_plan_se_neprovede(cfg, monkeypatch):
 
     monkeypatch.setattr("pilot.engine.eyes.snapshot", lambda c: _snap_pro_akce())
 
-    engine = Engine(cfg, on_event=lambda e: None)
+    engine = Engine(replace(cfg, use_vision=False), on_event=lambda e: None)
     monkeypatch.setattr(engine.speaker, "say", lambda t: None)
     monkeypatch.setattr(
         engine.brain,
@@ -704,7 +706,7 @@ def test_pred_provedenim_se_precte_cerstvy_snimek(cfg, monkeypatch):
     monkeypatch.setattr("pilot.engine.eyes.snapshot", falesny_snapshot)
     monkeypatch.setattr(act, "execute", lambda a, s: volani.__setitem__("execute", volani["execute"] + 1) or "ok")
 
-    engine = Engine(cfg, on_event=lambda e: None)
+    engine = Engine(replace(cfg, use_vision=False), on_event=lambda e: None)
     monkeypatch.setattr(engine.speaker, "say", lambda t: None)
     monkeypatch.setattr(
         engine.brain,
@@ -871,7 +873,7 @@ def _engine_pro_smycku(cfg, monkeypatch, kroky_next):
     monkeypatch.setattr(act, "execute", lambda a, s: provedeno.append(a.target) or "ok")
     monkeypatch.setattr("pilot.engine.eyes.snapshot", lambda c: _snap_pro_akce())
 
-    engine = Engine(cfg, on_event=lambda e: None)
+    engine = Engine(replace(cfg, use_vision=False), on_event=lambda e: None)
     monkeypatch.setattr(engine.speaker, "say", lambda t: None)
     monkeypatch.setattr(
         engine.brain,
@@ -1298,3 +1300,58 @@ def test_prekryv_zustane_aspon_chvili_videt(monkeypatch):
     time.sleep(0.2)
     app.processEvents()
     assert viditelne == [True, False], f"po minimální době se má schovat: {viditelne}"
+
+
+# ------------------------------------------------------------------ vision
+
+
+def test_souradnice_se_prepocitaji_zpet_na_obrazovku():
+    """Model vrací souřadnice ve zmenšeném snímku — musíme je zvětšit."""
+    from pilot.vision import Snimek
+
+    obraz = Snimek(data=b"", sirka=1280, vyska=720, offset_x=1920, offset_y=0, scale=1.5)
+
+    assert obraz.na_obrazovku(100, 50) == (1920 + 150, 0 + 75)
+    assert obraz.na_obrazovku(0, 0) == (1920, 0)
+
+
+def test_klik_souradnicemi_se_provede(monkeypatch):
+    from pilot import actions
+    from pilot.eyes import Snapshot
+
+    kliknuto = []
+    monkeypatch.setattr(actions, "_klik_mysi", lambda x, y, k: kliknuto.append((x, y, k)))
+
+    plan = actions.parse('{"say": "", "actions": [{"type": "click", "x": 400, "y": 300}]}')
+    vysledek = actions.execute(plan.actions[0], Snapshot())
+
+    assert kliknuto == [(400, 300, "click")]
+    assert "400" in vysledek
+
+
+def test_psani_nejdriv_klikne_do_pole(monkeypatch):
+    from pilot import actions
+    from pilot.eyes import Snapshot
+
+    poradi = []
+    monkeypatch.setattr(actions, "_klik_mysi", lambda x, y, k: poradi.append("klik"))
+    monkeypatch.setattr(actions, "_napis", lambda t: poradi.append(f"psani:{t}"))
+
+    akce = actions.Action(type="type", x=10, y=20, text="ahoj")
+    actions.execute(akce, Snapshot())
+
+    assert poradi == ["klik", "psani:ahoj"], poradi
+
+
+def test_vision_prompt_obsahuje_rozmery(cfg):
+    from pilot.brain import Brain
+    from pilot.vision import Snimek
+
+    obraz = Snimek(data=b"", sirka=1280, vyska=720, offset_x=0, offset_y=0, scale=1.5)
+    brain = Brain(replace(cfg, use_vision=True))
+
+    vyzva = brain.vision_prompt("zavři discord", [], obraz)
+
+    assert "1280x720" in vyzva
+    assert "zavři discord" in vyzva
+    assert '"x"' in vyzva

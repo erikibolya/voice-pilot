@@ -56,6 +56,8 @@ class Action:
     direction: str = ""
     amount: int = 0
     title: str = ""
+    x: int | None = None
+    y: int | None = None
 
     @classmethod
     def from_dict(cls, data: object) -> "Action":
@@ -73,9 +75,10 @@ class Action:
             except (TypeError, ValueError):
                 raise ActionError("target musí být číslo")
 
+        souradnice = data.get("x") is not None and data.get("y") is not None
         if kind in ("click", "double_click", "right_click", "invoke", "focus"):
-            if target is None:
-                raise ActionError(f"{kind} potřebuje target")
+            if target is None and not souradnice:
+                raise ActionError(f"{kind} potřebuje target nebo x/y")
 
         title = str(data.get("title") or "").strip()
         if kind in ("activate", "close") and not title:
@@ -97,6 +100,8 @@ class Action:
             direction=str(data.get("direction") or "down"),
             amount=int(data.get("amount") or 3),
             title=title,
+            x=int(data["x"]) if data.get("x") is not None else None,
+            y=int(data["y"]) if data.get("y") is not None else None,
         )
 
     def je_nebezpecna(self, element: Element | None = None) -> bool:
@@ -191,6 +196,11 @@ def describe(plan: Plan, snap: Snapshot) -> str:
             casti.append(f'přepnout na okno „{action.title}“')
         elif action.type == "close":
             casti.append(f'zavřít okno „{action.title}“')
+        elif action.x is not None and action.y is not None:
+            sloveso = {"click": "kliknout", "double_click": "dvakrát kliknout"}.get(
+                action.type, action.type
+            )
+            casti.append(f"{sloveso} na ({action.x}, {action.y})")
         elif action.type == "type":
             casti.append(f'napsat „{_short(action.text, 40)}“')
         elif action.type == "key":
@@ -229,6 +239,9 @@ def execute(action: Action, snap: Snapshot) -> str:
 
     element = snap.by_index(action.target) if action.target is not None else None
 
+    if action.target is None and action.x is None:
+        raise ActionError(f"akce {action.type} nemá co dělat")
+
     if action.target is not None and element is None:
         raise ActionError(f"prvek [{action.target}] už na obrazovce není")
 
@@ -237,6 +250,14 @@ def execute(action: Action, snap: Snapshot) -> str:
 
     if element is not None and element.source == "cdp":
         return _na_webu(action, element)
+
+    if (
+        action.type in ("click", "double_click", "right_click")
+        and action.x is not None
+        and action.y is not None
+    ):
+        _klik_mysi(action.x, action.y, action.type)
+        return f"kliknuto na ({action.x}, {action.y})"
 
     if action.type in ("click", "double_click", "right_click"):
         _klikni(element, action.type)
@@ -251,7 +272,10 @@ def execute(action: Action, snap: Snapshot) -> str:
         return f"přepnuto na „{element.name}“"
 
     if action.type == "type":
-        if element is not None:
+        if action.x is not None and action.y is not None:
+            _klik_mysi(action.x, action.y, "click")   # nejdřív klikni do pole
+            time.sleep(0.1)
+        elif element is not None:
             _focus(element)
         _napis(action.text)
         return f"napsáno {len(action.text)} znaků"

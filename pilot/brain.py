@@ -93,6 +93,40 @@ class Brain:
 
         return Reply(say=plan.say, plan=plan)
 
+    # ---------------------------------------------------------- vision
+
+    def vision_prompt(self, cil: str, provedeno: list[str], obraz) -> str:
+        """Výzva k modelu, který se dívá na screenshot."""
+        radky = [
+            "Jsi Pilot, hlasový asistent, který ovládá český Windows. Díváš se na screenshot obrazovky.",
+            "",
+            f"Obrázek má {obraz.sirka}x{obraz.vyska} pixelů. Souřadnice vracej v TĚCHTO pixelech,"
+            " počátek 0,0 je levý horní roh obrázku.",
+            "",
+            'Odpověz POUZE jedním JSON objektem, bez textu okolo:',
+            '{"say": "", "actions": [], "done": false}',
+            "",
+            "Akce (u kliknutí vždy x a y):",
+            '  {"type": "click",        "x": 400, "y": 300}',
+            '  {"type": "double_click", "x": 400, "y": 300}',
+            '  {"type": "right_click",  "x": 400, "y": 300}',
+            '  {"type": "type",         "x": 400, "y": 300, "text": "co napsat"}',
+            '  {"type": "key",          "keys": "alt+f4"}',
+            '  {"type": "close",        "title": "Discord"}',
+            "",
+            "Pravidla:",
+            '  - "say" nech prázdné, dokud není úkol hotový. Nepopisuj kroky.',
+            '  - Když je hotovo, dej "done": true.',
+            "  - Klíčová slova a tlačítka poznáš z obrázku; trefuj jejich středy.",
+            "  - Když si nejsi jistý, radši neklikej a napiš to do say.",
+            "",
+            "--- ÚKOL ---",
+            cil,
+        ]
+        if provedeno:
+            radky += ["", "--- UŽ PROVEDENO ---"] + [f"  - {k}" for k in provedeno[-10:]]
+        return "\n".join(radky)
+
     def describe_screen(self) -> Reply:
         return self.look_and_answer("Co teď vidíš na obrazovce? Popiš to jednou větou.")
 
