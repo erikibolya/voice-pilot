@@ -85,13 +85,23 @@ def run(cfg) -> int:
                 overlays.end_dictation()
             return
 
-        if typ == "state" and not diktovani["zapnuto"]:
-            if payload.get("value") == "listening":
-                overlays.begin_dictation()
-            else:
-                overlays.end_dictation()
-        elif typ == "control":
+        if typ == "control":
             overlays.show_control(bool(payload.get("on")))
+            return
+
+        if typ == "state":
+            stav = payload.get("value")
+            if not diktovani["zapnuto"]:
+                if stav == "listening":
+                    overlays.begin_dictation()
+                else:
+                    overlays.end_dictation()
+
+            # rám svítí, dokud AI pracuje — ne jen při samotném kliknutí
+            if stav == "thinking":
+                overlays.show_control(True)
+            elif stav == "idle":
+                overlays.show_control(False)
 
     engine.on_level = overlays.level
     bridge.event.connect(prekryvy)

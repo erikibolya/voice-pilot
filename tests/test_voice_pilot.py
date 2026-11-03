@@ -1240,3 +1240,61 @@ def test_pri_automatickem_jazyce_se_hlas_nevybira(cfg, monkeypatch):
     finally:
         dialog.close()
         app.processEvents()
+
+
+def test_zavreni_okna_podle_nazvu(cfg):
+    """„Zavři Discord" nesmí záviset na klikání do panelu úloh."""
+    from pilot import actions
+
+    akce = actions.parse('{"say": "", "actions": [{"type": "close", "title": "Discord"}]}').actions[0]
+    assert akce.title == "Discord"
+
+    popis = actions.describe(actions.Plan(actions=[akce]), eyes.snapshot(cfg))
+    assert "Discord" in popis
+
+
+def test_aktivace_okna_bez_title_selze():
+    from pilot import actions
+
+    plan = actions.parse('{"say": "", "actions": [{"type": "activate"}]}')
+    assert plan.actions == []
+    assert "title" in plan.error
+
+
+@pytest.mark.desktop
+def test_najdi_okno_podle_casti_nazvu():
+    from pilot import actions
+
+    hwnd = actions._najdi_okno("voice-pilot")
+    assert hwnd, "vlastní okno by mělo jít najít"
+
+
+def test_nenajde_neexistujici_okno():
+    from pilot import actions
+
+    with pytest.raises(actions.ActionError, match="nenašli"):
+        actions._najdi_okno("urcite-neexistujici-okno-xyz")
+
+
+def test_prekryv_zustane_aspon_chvili_videt(monkeypatch):
+    """Krátká akce nesmí bliknout a zmizet dřív, než ji člověk zaregistruje."""
+    import time
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from pilot.ui import overlay as mod
+
+    app = _qt()
+    prekryvy = mod.Overlays()
+    viditelne = []
+    monkeypatch.setattr(prekryvy, "_zobraz", lambda stav: viditelne.append(stav))
+
+    prekryvy.show_control(True)
+    prekryvy.show_control(False)   # hned pryč = typický případ jednoho kliknutí
+    assert viditelne == [True], "nesmí se schovat okamžitě"
+
+    time.sleep(mod.Overlays.MINIMUM_VIDITELNE + 0.2)
+    app.processEvents()
+    time.sleep(0.2)
+    app.processEvents()
+    assert viditelne == [True, False], f"po minimální době se má schovat: {viditelne}"

@@ -25,6 +25,8 @@ ALLOWED = {
     "type",
     "key",
     "scroll",
+    "activate",
+    "close",
 }
 
 # slova, u kterých se před provedením varuje dvakrát
@@ -53,6 +55,7 @@ class Action:
     keys: str = ""
     direction: str = ""
     amount: int = 0
+    title: str = ""
 
     @classmethod
     def from_dict(cls, data: object) -> "Action":
@@ -74,6 +77,10 @@ class Action:
             if target is None:
                 raise ActionError(f"{kind} potřebuje target")
 
+        title = str(data.get("title") or "").strip()
+        if kind in ("activate", "close") and not title:
+            raise ActionError(f"{kind} potřebuje title (název okna)")
+
         text = str(data.get("text") or "")
         if kind == "type" and not text:
             raise ActionError("type potřebuje text")
@@ -89,6 +96,7 @@ class Action:
             keys=keys,
             direction=str(data.get("direction") or "down"),
             amount=int(data.get("amount") or 3),
+            title=title,
         )
 
     def je_nebezpecna(self, element: Element | None = None) -> bool:
@@ -179,7 +187,11 @@ def describe(plan: Plan, snap: Snapshot) -> str:
     for action in plan.actions:
         element = snap.by_index(action.target) if action.target else None
 
-        if action.type == "type":
+        if action.type == "activate":
+            casti.append(f'přepnout na okno „{action.title}“')
+        elif action.type == "close":
+            casti.append(f'zavřít okno „{action.title}“')
+        elif action.type == "type":
             casti.append(f'napsat „{_short(action.text, 40)}“')
         elif action.type == "key":
             casti.append(f'stisknout {action.keys}')
@@ -212,6 +224,9 @@ def _short(text: str, limit: int) -> str:
 
 def execute(action: Action, snap: Snapshot) -> str:
     """Provede jednu akci. Vrací krátký popis, co se stalo."""
+    if action.type in ("activate", "close"):
+        return _aktivuj(action.title) if action.type == "activate" else _zavri(action.title)
+
     element = snap.by_index(action.target) if action.target is not None else None
 
     if action.target is not None and element is None:
@@ -250,6 +265,55 @@ def execute(action: Action, snap: Snapshot) -> str:
         return f"rolováno {action.direction}"
 
     raise ActionError(f"akci {action.type} neumím provést")
+
+
+def _najdi_okno(title: str) -> int:
+    """Najde viditelné okno podle části názvu."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    hledany = title.lower()
+    nalezena: list[tuple[int, str]] = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def projdi(hwnd, _lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        delka = user32.GetWindowTextLengthW(hwnd)
+        if delka == 0:
+            return True
+        buf = ctypes.create_unicode_buffer(delka + 1)
+        user32.GetWindowTextW(hwnd, buf, delka + 1)
+        if hledany in buf.value.lower():
+            nalezena.append((hwnd, buf.value))
+        return True
+
+    user32.EnumWindows(projdi, 0)
+
+    if not nalezena:
+        raise ActionError(f'okno „{title}“ jsme nenašli')
+    return nalezena[0][0]
+
+
+def _aktivuj(title: str) -> str:
+    """Přenese okno dopředu — bez klikání na panel úloh."""
+    import ctypes
+
+    hwnd = _najdi_okno(title)
+    user32 = ctypes.windll.user32
+    user32.ShowWindow(hwnd, 9)          # SW_RESTORE
+    user32.SetForegroundWindow(hwnd)
+    return f'přepnuto na „{title}“'
+
+
+def _zavri(title: str) -> str:
+    """Pošle oknu WM_CLOSE — stejné, jako když klikneš na křížek."""
+    import ctypes
+
+    hwnd = _najdi_okno(title)
+    ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+    return f'zavřeno „{title}“'
 
 
 def _v_prohlizeci(action: Action, element: Element) -> str:

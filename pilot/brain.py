@@ -34,6 +34,11 @@ Povolené akce — "target" je VŽDY číslo prvku ze seznamu PRVKY:
   {"type": "type",         "target": 7, "text": "co napsat"}
   {"type": "key",          "keys": "ctrl+s"}
   {"type": "scroll",       "direction": "down", "amount": 3}
+  {"type": "activate",     "title": "Discord"}   // přepne okno dopředu
+  {"type": "close",        "title": "Discord"}   // zavře okno (jako křížek)
+
+U oken používej "activate" a "close" s částí názvu okna. Je to spolehlivější
+než klikat na ikonu v panelu úloh — a na zavření okna to je jediná cesta.
 
 Pravidla, která se nesmí porušit:
 - Používej pouze čísla z posledního seznamu PRVKY. Jiné prvky neexistují.

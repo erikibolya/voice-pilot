@@ -35,6 +35,10 @@ class Tray(QSystemTrayIcon):
         self.action_settings.triggered.connect(self._settings)
         menu.addAction(self.action_settings)
 
+        self.action_abort = QAction("Přerušit práci (Ctrl+Alt+Esc)", menu)
+        self.action_abort.triggered.connect(engine.abort)
+        menu.addAction(self.action_abort)
+
         self.action_update = QAction("Zkontrolovat aktualizace", menu)
         self.action_update.triggered.connect(window.check_updates)
         menu.addAction(self.action_update)
