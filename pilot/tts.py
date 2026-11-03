@@ -347,6 +347,12 @@ class Speaker:
                 f"Piper model nenalezen ({model}). Spusť: python run.py --setup-piper"
             )
 
+        if self.cfg.language == "en" and "cs_CZ" in model.name:
+            raise TTSError(
+                "Piper má stažený jen český hlas. Pro angličtinu přepni na "
+                "edge-tts, nebo si stáhni anglický model Piperu."
+            )
+
         root = espeak_data_root()
         if root is not None:
             os.environ["ESPEAK_DATA_PATH"] = str(root)

@@ -15,10 +15,23 @@ from PySide6.QtWidgets import (
 
 from .. import hotkey
 
-VOICES = [
-    ("Vlasta (žena)", "cs-CZ-VlastaNeural"),
-    ("Antonín (muž)", "cs-CZ-AntoninNeural"),
+JAZYKY = [
+    ("Čeština", "cs"),
+    ("English", "en"),
 ]
+
+# hlasy pro edge-tts, rozdělené podle jazyka
+HLASY = {
+    "cs": [
+        ("Vlasta (žena)", "cs-CZ-VlastaNeural"),
+        ("Antonín (muž)", "cs-CZ-AntoninNeural"),
+    ],
+    "en": [
+        ("Aria (žena)", "en-US-AriaNeural"),
+        ("Guy (muž)", "en-US-GuyNeural"),
+        ("Jenny (žena, příjemnější)", "en-US-JennyNeural"),
+    ],
+}
 
 MODELS = [
     ("DeepSeek Flash — rychlý", "deepseek-flash"),
@@ -155,11 +168,18 @@ class SettingsDialog(QDialog):
         )
         form.addRow("Klávesa", self.hotkey)
 
+        self.language = QComboBox()
+        for label, value in JAZYKY:
+            self.language.addItem(label, value)
+        self._select(self.language, cfg.language)
+        form.addRow("Jazyk", self.language)
+
         self.voice = QComboBox()
-        for label, value in VOICES:
-            self.voice.addItem(label, value)
+        self._napln_hlasy(cfg.language)
         self._select(self.voice, cfg.voice)
         form.addRow("Hlas", self.voice)
+
+        self.language.currentIndexChanged.connect(self._zmen_jazyk)
 
         self.engine = QComboBox()
         for label, value in ENGINES:
@@ -197,6 +217,19 @@ class SettingsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def _napln_hlasy(self, jazyk: str) -> None:
+        self.voice.blockSignals(True)
+        self.voice.clear()
+        for label, value in HLASY.get(jazyk, HLASY["cs"]):
+            self.voice.addItem(label, value)
+        self.voice.blockSignals(False)
+
+    def _zmen_jazyk(self) -> None:
+        """Při změně jazyka se nabídnou hlasy, které k němu patří."""
+        jazyk = self.language.currentData()
+        self._napln_hlasy(jazyk)
+        self._podle_enginu()
+
     def _podle_enginu(self) -> None:
         """Hlas jde vybrat jen u edge-tts; Piper má jediný český hlas.
 
@@ -206,14 +239,21 @@ class SettingsDialog(QDialog):
         piper = self.engine.currentData() == "piper"
         self.voice.setEnabled(not piper)
         if piper:
-            self.note.setText(
-                "Piper má pro češtinu jediný hlas — jirka, mužský. "
-                "Ženský hlas nabízí jen edge-tts."
-            )
+            jazyk = self.language.currentData()
+            if jazyk == "en":
+                self.note.setText(
+                    "Piper má stažený jen český hlas (jirka). Pro angličtinu "
+                    "použij edge-tts, nebo si stáhni anglický model."
+                )
+            else:
+                self.note.setText(
+                    "Piper má pro češtinu jediný hlas — jirka, mužský. "
+                    "Ženský hlas nabízí jen edge-tts."
+                )
         else:
             self.note.setText(
-                "Klávesa se drží, dokud mluvíš. Změny se projeví po restartu "
-                "aplikace. Během nahrávání je nechte být."
+                "Jazyk mění přepis řeči, hlas i jazyk odpovědí. Změny se "
+                "projeví po restartu aplikace."
             )
 
     @staticmethod
@@ -223,6 +263,7 @@ class SettingsDialog(QDialog):
 
     def _save(self) -> None:
         self.cfg.hotkey = self.hotkey.combo
+        self.cfg.language = self.language.currentData()
         self.cfg.voice = self.voice.currentData()
         self.cfg.tts_engine = self.engine.currentData()
         self.cfg.model_id = self.model.currentData()

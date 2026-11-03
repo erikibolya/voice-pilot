@@ -992,3 +992,56 @@ def test_mezitimni_kroky_se_nemluvi(cfg, monkeypatch):
     assert provedeno == [1, 3]
     assert receno == ["Klikl jsem a přešel správně."], receno
     assert len(receno) == 1, "mluvit se má jen jednou, na konci"
+
+
+# ------------------------------------------------------------------- jazyk
+
+
+def test_zmena_jazyka_nabidne_spravne_hlasy(cfg, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from dataclasses import replace
+
+    from pilot.ui.settings import SettingsDialog
+
+    app = _qt()
+    dialog = SettingsDialog(replace(cfg, language="cs"))
+
+    try:
+        ceske = [dialog.voice.itemData(i) for i in range(dialog.voice.count())]
+        assert any(v.startswith("cs-CZ") for v in ceske), ceske
+
+        index = dialog.language.findData("en")
+        dialog.language.setCurrentIndex(index)
+
+        anglicke = [dialog.voice.itemData(i) for i in range(dialog.voice.count())]
+        assert any(v.startswith("en-US") for v in anglicke), anglicke
+        assert not any(v.startswith("cs-CZ") for v in anglicke)
+    finally:
+        dialog.close()
+        app.processEvents()
+
+
+def test_prompt_obsahuje_jazyk_odpovedi(cfg, monkeypatch):
+    from dataclasses import replace
+
+    from pilot.brain import Brain
+
+    brain = Brain(replace(cfg, language="en"), client=type("C", (), {"generate": lambda *a: ""})())
+    prompt = brain._build_prompt("hello", eyes.snapshot(cfg))
+
+    assert "angličtina" in prompt
+
+
+def test_piper_nevyrobi_anglictinu_ceskym_modelem(cfg, tmp_path):
+    """Český model na anglický text by zněl jako nesmysl — radši chyba."""
+    from dataclasses import replace
+
+    from pilot.tts import Speaker, TTSError
+
+    model = tmp_path / "cs_CZ-jirka-medium.onnx"
+    model.write_bytes(b"x")
+
+    nastaveni = replace(cfg, language="en", tts_engine="piper", piper_model=str(model))
+
+    with pytest.raises(TTSError, match="angličtin"):
+        Speaker(nastaveni)._piper("hello")
