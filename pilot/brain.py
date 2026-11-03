@@ -102,8 +102,10 @@ class Brain:
             "",
             "Jsi Pilot, hlasový asistent, který ovládá český Windows. Díváš se na screenshot obrazovky.",
             "",
-            f"Obrázek má {obraz.sirka}x{obraz.vyska} pixelů. Souřadnice vracej v TĚCHTO pixelech,"
+            f"Snímek: {obraz.popis}. Souřadnice vracej v TĚCHTO pixelech,"
             " počátek 0,0 je levý horní roh obrázku.",
+            "Vidíš jen tenhle jeden monitor. Jiná okna mohou být na jiném —"
+            " když je úkol o nich, řekni to v say a nedělej akci.",
             "",
             'Odpověz POUZE jedním JSON objektem, bez textu okolo:',
             '{"say": "", "actions": [], "done": false}',

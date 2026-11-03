@@ -1417,3 +1417,37 @@ def test_vision_nezopakuje_stejny_krok(cfg, monkeypatch):
     engine.ask("napiš ahoj", background=False)
 
     assert len(provedeno) == 1, f"napsalo se {len(provedeno)}x: {provedeno}"
+
+
+@pytest.mark.desktop
+def test_monitory_se_najdou():
+    """Multi-monitor: seznam musí odpovídat skutečnému rozložení."""
+    from pilot import vision
+
+    seznam = vision.monitory()
+    assert len(seznam) >= 1
+    for m in seznam:
+        assert m["width"] > 0 and m["height"] > 0
+
+
+def test_popis_snimku_vi_kolikaty_monitor():
+    from pilot.vision import Snimek
+
+    jeden = Snimek(data=b"", sirka=1920, vyska=1080, offset_x=0, offset_y=0, scale=1.0)
+    assert "monitor" not in jeden.popis
+
+    treti = Snimek(data=b"", sirka=1920, vyska=1080, offset_x=1920, offset_y=0,
+                   scale=1.0, monitor=3, monitoru=3)
+    assert "monitor 3 z 3" in treti.popis
+
+
+def test_vision_prompt_zmini_ze_vidi_jen_jeden_monitor(cfg):
+    from pilot.brain import Brain
+    from pilot.vision import Snimek
+
+    obraz = Snimek(data=b"", sirka=1920, vyska=1080, offset_x=1920, offset_y=0,
+                   scale=1.0, monitor=2, monitoru=3)
+    vyzva = Brain(replace(cfg, use_vision=True)).vision_prompt("co je na obrazovce", [], obraz)
+
+    assert "monitor 2 z 3" in vyzva
+    assert "jiném" in vyzva
