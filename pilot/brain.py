@@ -67,9 +67,14 @@ class Brain:
             cfg.service_url, cfg.service_password_file, cfg.provider_id, cfg.model_id
         )
         self.history: list[tuple[str, str]] = []
+        # nastaví engine podle jazyka, který rozpoznal Whisper
+        self.override_language: str | None = None
 
     def _jazyk(self) -> str:
-        return JAZYK_NAZEV.get(getattr(self.cfg, "language", "cs"), "čeština")
+        jazyk = self.override_language or getattr(self.cfg, "language", "auto")
+        if jazyk in ("auto", "", None):
+            jazyk = "cs"
+        return JAZYK_NAZEV.get(jazyk, "čeština")
 
     def look_and_answer(self, utterance: str, snap: eyes.Snapshot | None = None) -> Reply:
         snap = snap or eyes.snapshot(self.cfg)

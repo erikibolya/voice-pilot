@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from .. import hotkey
 
 JAZYKY = [
+    ("Automaticky (podle řeči)", "auto"),
     ("Čeština", "cs"),
     ("English", "en"),
 ]
@@ -227,7 +228,7 @@ class SettingsDialog(QDialog):
     def _zmen_jazyk(self) -> None:
         """Při změně jazyka se nabídnou hlasy, které k němu patří."""
         jazyk = self.language.currentData()
-        self._napln_hlasy(jazyk)
+        self._napln_hlasy("cs" if jazyk == "auto" else jazyk)
         self._podle_enginu()
 
     def _podle_enginu(self) -> None:
@@ -237,7 +238,15 @@ class SettingsDialog(QDialog):
         to jako rozbitá aplikace.
         """
         piper = self.engine.currentData() == "piper"
-        self.voice.setEnabled(not piper)
+        auto = self.language.currentData() == "auto"
+        self.voice.setEnabled(not piper and not auto)
+
+        if auto and not piper:
+            self.note.setText(
+                "Jazyk se pozná z řeči a hlas se vybere podle něj. "
+                "Můžeš mluvit česky i anglicky v jednom sezení."
+            )
+            return
         if piper:
             jazyk = self.language.currentData()
             if jazyk == "en":

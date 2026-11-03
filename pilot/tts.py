@@ -108,6 +108,7 @@ class Speaker:
         self._engine_used = ""
         self._prerusit = False
         self._vystup = None
+        self.voice_override: str | None = None
         self.on_first_audio: Callable[[], None] | None = None
         self._prvni_zvuk = False
 
@@ -195,7 +196,7 @@ class Speaker:
         def producent() -> None:
             async def bez() -> None:
                 komunikace = edge_tts.Communicate(
-                    text, self.cfg.voice, rate=self.cfg.speech_rate
+                    text, self.voice_override or self.cfg.voice, rate=self.cfg.speech_rate
                 )
                 async for kus in komunikace.stream():
                     if kus.get("type") == "audio":
@@ -328,7 +329,9 @@ class Speaker:
         import edge_tts
 
         out = CACHE / f"speech-{index}.mp3"
-        communicate = edge_tts.Communicate(text, self.cfg.voice, rate=self.cfg.speech_rate)
+        communicate = edge_tts.Communicate(
+            text, self.voice_override or self.cfg.voice, rate=self.cfg.speech_rate
+        )
         asyncio.run(communicate.save(str(out)))
         if not out.exists() or out.stat().st_size < 1000:
             raise TTSError("edge-tts vrátil prázdný soubor")

@@ -22,7 +22,8 @@ class Config:
     whisper_model: str = "large-v3"
     whisper_device: str = "cuda"
     whisper_compute: str = "float16"
-    language: str = "cs"
+    # "auto" = jazyk se pozná z řeči; jinak "cs"/"en" vynuceně
+    language: str = "auto"
     sample_rate: int = 16000
     # pod tuto délku zvuku se nahrávka zahodí (mlasknutí apod.)
     min_speech_seconds: float = 0.4
