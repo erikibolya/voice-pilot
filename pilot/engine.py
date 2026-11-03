@@ -52,6 +52,12 @@ class Engine:
         # Kdo potvrzuje akce. Výchozí je "ne" — bez obsluhy se nic neprovede.
         self.confirmer: Callable[[str, bool], bool] = lambda popis, nebezpecna: False
 
+        # měření jednotlivých kroků pro diagnostiku
+        self._cas_prepisu = 0.0
+        self._cas_modelu = 0.0
+        self._cas_hlasu = 0.0
+        self._cas_prvni_zvuk = 0.0
+
     # ------------------------------------------------------------- stav
 
     def _emit(self, payload: dict) -> None:
@@ -135,7 +141,6 @@ class Engine:
         def nacti_obrazovku() -> None:
             try:
                 snap = eyes.snapshot(self.cfg)
-                obrazovka["snap"] = snap
                 self._emit(
                     {
                         "type": "screen",
@@ -143,18 +148,22 @@ class Engine:
                         "window": snap.active_title,
                     }
                 )
+                # COM odkazy patří tomuhle vláknu — pusťme je tady, ne jinde
+                eyes.release(snap)
+                obrazovka["snap"] = snap
             except Exception as exc:
                 obrazovka["error"] = exc
 
         vlakno = threading.Thread(target=nacti_obrazovku, daemon=True)
         vlakno.start()
 
+        t0 = time.monotonic()
         try:
             text = self.transcriber.transcribe(audio)
         except Exception as exc:
             self._fail(f"Přepis selhal: {exc}")
             return
-
+        self._cas_prepisu = time.monotonic() - t0
         vlakno.join(timeout=self.cfg.ui_budget_seconds + 2)
 
         if not text:
@@ -168,6 +177,7 @@ class Engine:
 
     def _answer(self, text: str, snap=None) -> None:
         self._busy = True
+        t0_modelu = time.monotonic()
         try:
             if snap is None:
                 snap = eyes.snapshot(self.cfg)
@@ -182,6 +192,7 @@ class Engine:
         except Exception as exc:
             self._fail(f"Model neodpověděl: {exc}")
             return
+        self._cas_modelu = time.monotonic() - t0_modelu
 
         plan = reply.plan
         if plan.error:
@@ -275,15 +286,44 @@ class Engine:
 
     def _speak(self, text: str) -> None:
         self._set_state(SPEAKING)
+        t0 = time.monotonic()
+        zaznamenano = {"t": None}
+
+        def prvni_zvuk() -> None:
+            if zaznamenano["t"] is None:
+                zaznamenano["t"] = time.monotonic() - t0
+
+        self.speaker.on_first_audio = prvni_zvuk
         try:
             self.speaker.say(text)
         except Exception as exc:
             self._log(f"Hlas selhal: {exc}", "error")
+        finally:
+            self.speaker.on_first_audio = None
+            self._cas_hlasu += time.monotonic() - t0
+            if zaznamenano["t"] is not None:
+                self._cas_prvni_zvuk += zaznamenano["t"]
 
     def _done(self) -> None:
         self._emit({"type": "control", "on": False})
         self._busy = False
         self._set_state(IDLE)
+
+        if self._cas_prepisu or self._cas_modelu:
+            riadok = (
+                f"  kolo: přepis {self._cas_prepisu:.1f} s"
+                f" · model {self._cas_modelu:.1f} s"
+                f" · první zvuk {self._cas_prvni_zvuk:.1f} s"
+                f" · celkem do zvuku "
+                f"{self._cas_prepisu + self._cas_modelu + self._cas_prvni_zvuk:.1f} s"
+            )
+            print(riadok, flush=True)
+            self._log(
+                f"do prvního zvuku "
+                f"{self._cas_prepisu + self._cas_modelu + self._cas_prvni_zvuk:.1f} s"
+            )
+        self._cas_prepisu = self._cas_modelu = self._cas_hlasu = 0.0
+        self._cas_prvni_zvuk = 0.0
 
     def _fail(self, message: str) -> None:
         self._busy = False

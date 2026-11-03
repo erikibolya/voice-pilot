@@ -806,3 +806,19 @@ def test_hlas_jde_menit_jen_u_edge(cfg, monkeypatch):
     finally:
         dialog.close()
         app.processEvents()
+
+
+def test_transcriber_prewarm_nacte_model_na_pozadi(cfg, monkeypatch):
+    """Regrese: chyběl import threading, aplikace spadla hned při startu."""
+    import time
+
+    from pilot.stt import Transcriber
+
+    nacteno: list[int] = []
+    tr = Transcriber(cfg)
+    monkeypatch.setattr(tr, "_load", lambda: nacteno.append(1))
+
+    tr.prewarm()
+    time.sleep(0.2)
+
+    assert nacteno, "prewarm model vůbec nenačetl"
